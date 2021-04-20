@@ -1,0 +1,8 @@
+*.conllu
+*.ipynb
+
+__pycache__
+
+.pynb_checkpoints
+
+
