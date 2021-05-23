@@ -123,7 +123,7 @@ class BiaffineDependencyModel(nn.Module):
         self.embed_dropout = IndependentDropout(p=embed_dropout)
 
         # the lstm layer
-        self.lstm = LSTM(input_size=n_embed+n_feat_embed,
+        self.lstm = LSTM(input_size=n_feat_embed,
                          hidden_size=n_lstm_hidden,
                          num_layers=n_lstm_layers,
                          bidirectional=True,
@@ -183,7 +183,7 @@ class BiaffineDependencyModel(nn.Module):
         feat_embed = self.feat_embed(feats)
         word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed)
         # concatenate the word and feat representations
-        embed = torch.cat((word_embed, feat_embed), -1)
+        embed = torch.cat((feat_embed), -1)
 
         x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
         x, _ = self.lstm(x)

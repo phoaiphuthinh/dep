@@ -1,7 +1,11 @@
 *.conllu
 *.ipynb
 
+glove.6B.100d.txt
+
 __pycache__
 
-.ipynb_checkpoints 
+.ipynb_checkpoints
 
+test.py
+mod.py

@@ -1,13 +1,13 @@
 from utils import CoNLL
 from tree import GraphSentence
+from mod import modifyADP
 
 x = CoNLL()
 
-data = x.load('en_gum-ud-test.conllu')
+data = x.load('en_test.conllu')
 
+s = dict()
 
-print(data[15].values)
+sen = data[598]
 
-x = GraphSentence(data[15].values)
-l = x.traverse(x.root)
-print(l)
+a = GraphSentence(sen.value
