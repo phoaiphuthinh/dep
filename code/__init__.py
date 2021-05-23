@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from .parsers import BiaffineDependencyParser, EnsembleDependencyParser
+from .parsers import (BiaffineDependencyParser, EnsembleDependencyParser)
 
 __all__ = ['BiaffineDependencyParser',
             'EnsembleDependencyParser',

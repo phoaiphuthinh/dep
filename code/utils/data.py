@@ -97,6 +97,10 @@ class Dataset(torch.utils.data.Dataset):
                                                        shuffle=shuffle,
                                                        distributed=distributed),
                                  collate_fn=self.collate_fn)
+        reverse = lambda x : list(map(lambda y : self.lengths[y], x))
+        length = list(map(lambda x : reverse(x), self.buckets.values()))
+
+        return list(self.buckets.keys()), list(map(lambda x : (min(x), max(x)), length))
 
 
 class DataLoader(torch.utils.data.DataLoader):
@@ -169,3 +173,81 @@ class Sampler(torch.utils.data.Sampler):
 
     def __len__(self):
         return self.samples
+
+
+class DatasetPos(torch.utils.data.Dataset):
+
+    
+    def __init__(self, transform, data, bucket, keys, **kwargs):
+        super(DatasetPos, self).__init__()
+
+        self.transform = transform
+        self.sentences = transform.load(data, **kwargs)
+        self.bucket = bucket
+        self.keys = keys
+
+    def __repr__(self):
+        s = f"{self.__class__.__name__}("
+        s += f"n_sentences={len(self.sentences)}"
+        if hasattr(self, 'loader'):
+            s += f", n_batches={len(self.loader)}"
+        if hasattr(self, 'buckets'):
+            s += f", n_buckets={len(self.buckets)}"
+        s += ")"
+
+        return s
+
+    def __len__(self):
+        return len(self.sentences)
+
+    def __getitem__(self, index):
+        if not hasattr(self, 'fields'):
+            raise RuntimeError("The fields are not numericalized. Please build the dataset first.")
+        for d in self.fields.values():
+            yield d[index]
+
+    def __getattr__(self, name):
+        if name in self.__dict__:
+            return self.__dict__[name]
+        return [getattr(sentence, name) for sentence in self.sentences]
+
+    def __setattr__(self, name, value):
+        if 'sentences' in self.__dict__ and name in self.sentences[0]:
+            # restore the order of sequences in the buckets
+            indices = torch.tensor([i
+                                    for bucket in self.buckets.values()
+                                    for i in bucket]).argsort()
+            for index, sentence in zip(indices, self.sentences):
+                setattr(sentence, name, value[index])
+        else:
+            self.__dict__[name] = value
+
+    def __getstate__(self):
+        # only pickle the Transform object and sentences
+        return {'transform': self.transform, 'sentences': self.sentences}
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def collate_fn(self, batch):
+        return {f: d for f, d in zip(self.fields.keys(), zip(*batch))}
+
+    def build(self, batch_size, n_buckets=1, shuffle=False, distributed=False):
+        # numericalize all fields
+        self.fields = self.transform(self.sentences)
+        # NOTE: the final bucket count is roughly equal to n_buckets
+        self.lengths = [len(i) for i in self.fields[next(iter(self.fields))]]
+        
+        self.buckets = {x : [] for x in self.keys}
+        
+        for ind, length in enumerate(self.lengths):
+            for i in range(len(self.bucket)):
+                if length >= self.bucket[i][0] and length <= self.bucket[i][1]:
+                    self.buckets[self.keys[i]].append(ind)
+
+        self.loader = DataLoader(dataset=self,
+                                 batch_sampler=Sampler(buckets=self.buckets,
+                                                       batch_size=batch_size,
+                                                       shuffle=shuffle,
+                                                       distributed=distributed),
+                                 collate_fn=self.collate_fn)

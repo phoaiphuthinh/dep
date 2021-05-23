@@ -64,7 +64,32 @@ class EnsembleDependencyParser(EnsembleParser):
 
         return super().train(**Config().update(locals()))
 
+    def _train(self, loader):
+        self.model.train()
 
+        bar, metric = progress_bar(loader), AttachmentMetric()
+
+        for words, feats, arcs, rels in bar:
+            self.optimizer.zero_grad()
+
+            mask = words.ne(self.WORD.pad_index)
+            # ignore the first token of each sentence
+            mask[:, 0] = 0
+            s_arc, s_rel = self.model(words, feats)
+            loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, self.args.partial)
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
+            self.optimizer.step()
+            self.scheduler.step()
+
+            arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask)
+            if self.args.partial:
+                mask &= arcs.ge(0)
+            # ignore all punctuation if not specified
+            if not self.args.punct:
+                mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+            metric(arc_preds, rel_preds, arcs, rels, mask)
+            bar.set_postfix_str(f"lr: {self.scheduler.get_last_lr()[0]:.4e} - loss: {loss:.4f} - {metric}")
 
     @classmethod
     def build(cls, path,

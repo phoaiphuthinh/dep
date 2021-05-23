@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import code
 import torch
 import torch.distributed as dist
-from code.utils import Config, Dataset
+from code.utils import Config, Dataset, DatasetPos
 from code.utils.field import Field
 from code.utils.logging import init_logger, logger
 from code.utils.metric import Metric
@@ -42,14 +42,15 @@ class EnsembleParser(object):
         dev = Dataset(self.origin, args.dev)
         test = Dataset(self.origin, args.test)
 
-        train.build(args.batch_size, args.buckets, True, dist.is_initialized())
+        keys, buckets_list = train.build(args.batch_size, args.buckets, True, dist.is_initialized())
+
         dev.build(args.batch_size, args.buckets)
         test.build(args.batch_size, args.buckets)
         
         if self.addition:
-            train_add = Dataset(self.addition, args.train_add, **args)
-            dev_add = Dataset(self.addition, args.dev_add)
-            test_add = Dataset(self.addition, args.test_add)
+            train_add = DatasetPos(self.addition, args.train_add, buckets_list, keys, **args)
+            dev_add = DatasetPos(self.addition, args.dev_add, buckets_list, keys)
+            test_add = DatasetPos(self.addition, args.test_add, buckets_list, keys,)
 
             train_add.build(args.batch_size, args.buckets, True, dist.is_initialized())
             dev_add.build(args.batch_size, args.buckets)
