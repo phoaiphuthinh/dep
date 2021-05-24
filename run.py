@@ -10,9 +10,4 @@ y = list(map(lambda x : trans(x), l.values()))
 
 k = list(map(lambda x: (min(x), max(x)), y))
 
-print(l)
-
-sizes, buckets = zip(*[(size, bucket) for size, bucket in l.items()])
-
-print({x : [] for x in sizes})
-print(buckets)
+print(k)

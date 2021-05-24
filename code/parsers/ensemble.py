@@ -64,19 +64,22 @@ class EnsembleDependencyParser(EnsembleParser):
 
         return super().train(**Config().update(locals()))
 
-    def _train(self, loader):
+    def _train(self, loader, loader_add):
         self.model.train()
 
         bar, metric = progress_bar(loader), AttachmentMetric()
-
-        for words, feats, arcs, rels in bar:
+        bar_add = iter(loader_add)
+        
+        for words, feats, pos, arcs, rels in bar:
             self.optimizer.zero_grad()
-
+            words_add, arcs_add, rels_add = next(bar_add)
             mask = words.ne(self.WORD.pad_index)
+            mask_add = words_add.ne(self.POS.pad_index)
+
             # ignore the first token of each sentence
             mask[:, 0] = 0
-            s_arc, s_rel = self.model(words, feats)
-            loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, self.args.partial)
+            s_arc, s_rel, a_arc, a_rel = self.model(words, feats, words_add, pos)
+            loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, a_arc, a_rel, arcs_add, rels_add, mask_add, self.args.partial)
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
             self.optimizer.step()
@@ -90,6 +93,56 @@ class EnsembleDependencyParser(EnsembleParser):
                 mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
             metric(arc_preds, rel_preds, arcs, rels, mask)
             bar.set_postfix_str(f"lr: {self.scheduler.get_last_lr()[0]:.4e} - loss: {loss:.4f} - {metric}")
+
+    @torch.no_grad()
+    def _evaluate(self, loader):
+        self.model.eval()
+
+        total_loss, metric = 0, AttachmentMetric()
+
+        for words, feats, pos, arcs, rels in loader:
+            mask = words.ne(self.WORD.pad_index)
+            # ignore the first token of each sentence
+            mask[:, 0] = 0
+            s_arc, s_rel = self.model(words, feats, pos=pos)
+            loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, self.args.partial)
+            arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask, self.args.tree, self.args.proj)
+            if self.args.partial:
+                mask &= arcs.ge(0)
+            # ignore all punctuation if not specified
+            if not self.args.punct:
+                mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+            total_loss += loss.item()
+            metric(arc_preds, rel_preds, arcs, rels, mask)
+        total_loss /= len(loader)
+
+        return total_loss, metric
+
+    @torch.no_grad()
+    def _predict(self, loader):
+        self.model.eval()
+
+        preds = {}
+        arcs, rels, probs = [], [], []
+        for words, feats in progress_bar(loader):
+            mask = words.ne(self.WORD.pad_index)
+            # ignore the first token of each sentence
+            mask[:, 0] = 0
+            lens = mask.sum(1).tolist()
+            s_arc, s_rel = self.model(words, feats)
+            arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask, self.args.tree, self.args.proj)
+            arcs.extend(arc_preds[mask].split(lens))
+            rels.extend(rel_preds[mask].split(lens))
+            if self.args.prob:
+                arc_probs = s_arc.softmax(-1)
+                probs.extend([prob[1:i+1, :i+1].cpu() for i, prob in zip(lens, arc_probs.unbind())])
+        arcs = [seq.tolist() for seq in arcs]
+        rels = [self.REL.vocab[seq.tolist()] for seq in rels]
+        preds = {'arcs': arcs, 'rels': rels}
+        if self.args.prob:
+            preds['probs'] = probs
+
+        return preds
 
     @classmethod
     def build(cls, path,
@@ -144,17 +197,19 @@ class EnsembleDependencyParser(EnsembleParser):
             FEAT = Field('tags', bos=bos)
         ARC = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL = Field('rels', bos=bos)
+        TAG = Field('pos', bos=bos)
         if args.feat in ('char', 'bert'):
-            origin = CoNLL(FORM=(WORD, FEAT), HEAD=ARC, DEPREL=REL)
+            origin = CoNLL(FORM=(WORD, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
         else:
-            origin = CoNLL(FORM=WORD, CPOS=FEAT, HEAD=ARC, DEPREL=REL)
+            origin = CoNLL(FORM=WORD, CPOS=FEAT, POS=TAG, HEAD=ARC, DEPREL=REL)
 
         train = Dataset(origin, args.train)
         WORD.build(train, args.min_freq, (Embedding.load(args.embed, args.unk) if args.embed else None))
         FEAT.build(train)
         REL.build(train)
+        TAG.build(train)
         args.update({
-            'n_words': WORD.vocab.n_init,
+            'n_words': len(WORD.vocab),
             'n_feats': len(FEAT.vocab),
             'n_rels': len(REL.vocab),
             'pad_index': WORD.pad_index,
@@ -171,20 +226,15 @@ class EnsembleDependencyParser(EnsembleParser):
         REL_ADD = Field('rels', bos=bos)
         addition = CoNLL(CPOS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
 
-        train = Dataset(addition, args.train)
+        train_add = Dataset(addition, args.train_add)
+        POS.build(train_add)
+        REL_ADD.build(train_add)
         
-        POS.build(train)
-        REL_ADD.build(train)
-        
-        # args.update({
-        #     'n_words': WORD.vocab.n_init,
-        #     'n_feats': len(FEAT.vocab),
-        #     'n_rels': len(REL.vocab),
-        #     'pad_index': WORD.pad_index,
-        #     'unk_index': WORD.unk_index,
-        #     'bos_index': WORD.bos_index,
-        #     'feat_pad_index': FEAT.pad_index,
-        # })
+        args.update({
+            'n_feats_add': len(POS.vocab),
+            'n_rels_add': len(REL_ADD.vocab),
+            'feat_pad_index_add': POS.pad_index,
+        })
         logger.info(f"{addition}")
 
         logger.info("Building the model")
