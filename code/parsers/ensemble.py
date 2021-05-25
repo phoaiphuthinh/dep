@@ -73,13 +73,17 @@ class EnsembleDependencyParser(EnsembleParser):
         for words, feats, pos, arcs, rels in bar:
             self.optimizer.zero_grad()
             words_add, arcs_add, rels_add = next(bar_add)
+            # print(arcs_add)
+            # print(rels_add)
             mask = words.ne(self.WORD.pad_index)
             mask_add = words_add.ne(self.POS.pad_index)
 
             # ignore the first token of each sentence
             mask[:, 0] = 0
+            mask_add[:, 0] = 0
             s_arc, s_rel, a_arc, a_rel = self.model(words, feats, words_add, pos)
             loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, a_arc, a_rel, arcs_add, rels_add, mask_add, self.args.partial)
+            #print(loss)
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
             self.optimizer.step()
