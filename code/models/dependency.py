@@ -403,20 +403,11 @@ class AffineDependencyModel(nn.Module):
         batch_size, seq_len = words.shape
         # get the mask and lengths of given batch
         mask = words.ne(self.pad_index)
-        ext_words = words
-        # set the indices larger than num_embeddings to unk_index
-        if hasattr(self, 'pretrained'):
-            ext_mask = words.ge(self.word_embed.num_embeddings)
-            ext_words = words.masked_fill(ext_mask, self.unk_index)
-
         # get outputs from embedding layers
-        feat_embed = self.feat_embed(ext_words)
-        if hasattr(self, 'pretrained'):
-            feat_embed += self.pretrained(words)
+        feat_embed = self.feat_embed(words)
         feat_embed = self.embed_dropout(feat_embed)
         # concatenate the word and feat representations
         embed = torch.cat((feat_embed), -1)
-
         x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
         x, _ = self.lstm(x)
         x, _ = pad_packed_sequence(x, True, total_length=seq_len)
@@ -433,7 +424,7 @@ class AffineDependencyModel(nn.Module):
         # [batch_size, seq_len, seq_len, n_rels]
         s_rel = self.rel_attn(rel_d, rel_h).permute(0, 2, 3, 1)
         # set the scores that exceed the length of each sentence to -inf
-        s_arc.masked_fill_(~mask.unsqueeze(1), float('-inf'))
+        #s_arc.masked_fill_(~mask.unsqueeze(1), float('-inf'))
 
         return s_arc, s_rel
 

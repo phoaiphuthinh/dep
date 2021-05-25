@@ -152,42 +152,42 @@ class EnsembleModel(nn.Module):
                 The training loss.
         """
         
-        if partial:
-            mask = mask & arcs.ge(0)
-            if mask_add is not None:
-                mask_add = mask_add & arcs_add.ge(0)
-        s_arc, arcs = s_arc[mask], arcs[mask]
-        s_rel, rels = s_rel[mask], rels[mask]
-        s_rel = s_rel[torch.arange(len(arcs)), arcs]
-        arc_loss = self.criterion(s_arc, arcs)
-        # print(arc_loss.shape)
-        # print(arc_loss)
-        rel_loss = self.criterion(s_rel, rels)
-        # print(rel_loss.shape)
-        # print(rel_loss)
-        #additional = 0
-        # print(a_arc)
-        #print(s_rel)
-        # print(mask_add)
-        # print(mask)
-        # print("add ",rels_add)
-        # print("not add ",rels)
-        #print(rels)
-        print(s_rel)
-        print(rels)
-        additional = 0
-        if mask_add is not None:
-            a_arc, arcs_add = a_arc[mask_add], arcs_add[mask_add]
-            a_rel, rels_add = a_rel[mask_add], rels_add[mask_add]
-            a_rel = a_rel[torch.arange(len(arcs_add)), arcs_add]
-            arc_loss_add = self.criterion(a_arc, arcs_add)
-            rel_loss_add = self.criterion(a_rel, rels_add)
-            print(a_rel)
-            print(rels_add)
-            additional = arc_loss_add * self.alpha + rel_loss_add * self.alpha
-            #print("add: ", additional)
+        # if partial:
+        #     mask = mask & arcs.ge(0)
+        #     if mask_add is not None:
+        #         mask_add = mask_add & arcs_add.ge(0)
+        # s_arc, arcs = s_arc[mask], arcs[mask]
+        # s_rel, rels = s_rel[mask], rels[mask]
+        # s_rel = s_rel[torch.arange(len(arcs)), arcs]
+        # arc_loss = self.criterion(s_arc, arcs)
+        # rel_loss = self.criterion(s_rel, rels)
+        # # print(rel_loss.shape)
+        # # print(rel_loss)
+        # #additional = 0
+        # # print(a_arc)
+        # #print(s_rel)
+        # # print(mask_add)
+        # # print(mask)
+        # # print("add ",rels_add)
+        # # print("not add ",rels)
+        # #print(rels)
+        # additional = 0
+        # if mask_add is not None:
+        #     a_arc, arcs_add = a_arc[mask_add], arcs_add[mask_add]
+        #     bz, sl = a_arc.shape
+        #     print(a_arc)
+        #     print(s_arc)
+        #     a_rel, rels_add = a_rel[mask_add], rels_add[mask_add]
+        #     a_rel = a_rel[torch.arange(len(arcs_add)), arcs_add]
+        #     arc_loss_add = self.criterion(a_arc, arcs_add)
+        #     rel_loss_add = self.criterion(a_rel, rels_add)
+        #     additional = arc_loss_add * self.alpha + rel_loss_add * self.alpha
+        #     #print("add: ", additional)
 
-        return arc_loss + rel_loss + additional
+        if mask_add is not None:
+            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha
+
+        return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
 
     def decode(self, s_arc, s_rel, mask, tree=False, proj=False):
         r"""
