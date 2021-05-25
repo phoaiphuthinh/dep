@@ -90,6 +90,7 @@ class EnsembleModel(nn.Module):
         self.unk_index = unk_index
         self.alpha = alpha
         self.n_rels_add = n_rels
+        self.softmax_1 = nn.Softmax(dim=1)
         #self.redirect
 
 
@@ -108,22 +109,23 @@ class EnsembleModel(nn.Module):
             a_arc, a_rel = self.addition(adds)
             #a_arc: [bucket_size, seq_len, seq_len]
         
-            self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
+            #self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
+            #print(s_arc.shape)
 
-            s_arc = nn.Softmax(s_arc, dim=1)
-            s_rel = nn.Softmax(s_rel, dim=1)
+            # s_arc = self.softmax_1(s_arc)
+            # s_rel = self.softmax_1(s_rel)
 
-            a_arc = nn.Softmax(a_arc, dim=1)
-            a_rel = nn.Softmax(a_rel, dim=1)
+            # a_arc = self.softmax_1(a_arc)
+            # a_rel = self.softmax_1(a_rel)
             
             return s_arc, s_rel, a_arc, a_rel
 
         a_arc, a_rel = self.addition(pos)
     
-        self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
+        #self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
 
-        s_arc = nn.Softmax(s_arc, dim=1)
-        s_rel = nn.Softmax(s_rel, dim=1)
+        # s_arc = self.softmax_1(s_arc)
+        # s_rel = self.softmax_1(s_rel)
 
             
         return s_arc, s_rel
@@ -149,7 +151,7 @@ class EnsembleModel(nn.Module):
             ~torch.Tensor:
                 The training loss.
         """
-
+        
         if partial:
             mask = mask & arcs.ge(0)
             if mask_add is not None:
@@ -158,7 +160,21 @@ class EnsembleModel(nn.Module):
         s_rel, rels = s_rel[mask], rels[mask]
         s_rel = s_rel[torch.arange(len(arcs)), arcs]
         arc_loss = self.criterion(s_arc, arcs)
+        # print(arc_loss.shape)
+        # print(arc_loss)
         rel_loss = self.criterion(s_rel, rels)
+        # print(rel_loss.shape)
+        # print(rel_loss)
+        #additional = 0
+        # print(a_arc)
+        #print(s_rel)
+        # print(mask_add)
+        # print(mask)
+        # print("add ",rels_add)
+        # print("not add ",rels)
+        #print(rels)
+        print(s_rel)
+        print(rels)
         additional = 0
         if mask_add is not None:
             a_arc, arcs_add = a_arc[mask_add], arcs_add[mask_add]
@@ -166,7 +182,10 @@ class EnsembleModel(nn.Module):
             a_rel = a_rel[torch.arange(len(arcs_add)), arcs_add]
             arc_loss_add = self.criterion(a_arc, arcs_add)
             rel_loss_add = self.criterion(a_rel, rels_add)
+            print(a_rel)
+            print(rels_add)
             additional = arc_loss_add * self.alpha + rel_loss_add * self.alpha
+            #print("add: ", additional)
 
         return arc_loss + rel_loss + additional
 
