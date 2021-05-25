@@ -67,9 +67,11 @@ class EnsembleParser(object):
         elapsed = timedelta()
         best_e, best_metric = 1, Metric()
 
-        for epoch in range(1, args.epochs + 1):
+        #for epoch in range(1, args.epochs + 1):
+        epoch = 0
+        while True: #endless training
             start = datetime.now()
-
+            epoch += 1
             logger.info(f"Epoch {epoch} / {args.epochs}:")
             self._train(train.loader, train_add.loader)
             loss, dev_metric = self._evaluate(dev.loader)
@@ -87,8 +89,8 @@ class EnsembleParser(object):
             else:
                 logger.info(f"{t}s elapsed\n")
             elapsed += t
-            if epoch - best_e >= args.patience:
-                break
+            # if epoch - best_e >= args.patience:
+            #     break
         loss, metric = self.load(**args)._evaluate(test.loader)
 
         logger.info(f"Epoch {best_e} saved")

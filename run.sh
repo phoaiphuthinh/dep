@@ -1,6 +1,6 @@
 #! /bin/bash
 
-python3.7 -m code.cmds.ensemble_dependency --feat bert --build -d 0 \
+python3.7 -m code.cmds.ensemble_dependency train --feat bert --build -d 0 \
 --train "" \
 --dev "" \
 --test "" \

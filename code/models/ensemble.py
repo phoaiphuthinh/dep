@@ -109,12 +109,21 @@ class EnsembleModel(nn.Module):
             #a_arc: [bucket_size, seq_len, seq_len]
         
             self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
+
+            s_arc = nn.Softmax(s_arc, dim=1)
+            s_rel = nn.Softmax(s_rel, dim=1)
+
+            a_arc = nn.Softmax(a_arc, dim=1)
+            a_rel = nn.Softmax(a_rel, dim=1)
             
             return s_arc, s_rel, a_arc, a_rel
 
         a_arc, a_rel = self.addition(pos)
     
         self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
+
+        s_arc = nn.Softmax(s_arc, dim=1)
+        s_rel = nn.Softmax(s_rel, dim=1)
 
             
         return s_arc, s_rel
