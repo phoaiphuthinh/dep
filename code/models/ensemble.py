@@ -90,7 +90,8 @@ class EnsembleModel(nn.Module):
         self.unk_index = unk_index
         self.alpha = alpha
         self.n_rels_add = n_rels
-        self.softmax_1 = nn.Softmax(dim=1)
+        self.softmax_arc = nn.Softmax(dim=1)
+        self.softmax_rel = nn.Softmax(dim=3)
         #self.redirect
 
 
@@ -109,7 +110,7 @@ class EnsembleModel(nn.Module):
             a_arc, a_rel = self.addition(adds)
             #a_arc: [bucket_size, seq_len, seq_len]
         
-            #self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
+            # s_arc, s_rel = self.modifyScore_2(adds, a_arc, a_rel, pos, s_arc, s_rel)
             #print(s_arc.shape)
 
             # s_arc = self.softmax_1(s_arc)
@@ -122,10 +123,7 @@ class EnsembleModel(nn.Module):
 
         a_arc, a_rel = self.addition(pos)
     
-        #self.modifyscore(adds, a_arc, a_rel, pos, s_arc, s_rel)
-
-        # s_arc = self.softmax_1(s_arc)
-        # s_rel = self.softmax_1(s_rel)
+        # s_arc, s_rel = self.modifyScore_2(adds, a_arc, a_rel, pos, s_arc, s_rel)
 
             
         return s_arc, s_rel
@@ -152,42 +150,29 @@ class EnsembleModel(nn.Module):
                 The training loss.
         """
         
-        # if partial:
-        #     mask = mask & arcs.ge(0)
-        #     if mask_add is not None:
-        #         mask_add = mask_add & arcs_add.ge(0)
-        # s_arc, arcs = s_arc[mask], arcs[mask]
-        # s_rel, rels = s_rel[mask], rels[mask]
-        # s_rel = s_rel[torch.arange(len(arcs)), arcs]
-        # arc_loss = self.criterion(s_arc, arcs)
-        # rel_loss = self.criterion(s_rel, rels)
-        # # print(rel_loss.shape)
-        # # print(rel_loss)
-        # #additional = 0
-        # # print(a_arc)
-        # #print(s_rel)
-        # # print(mask_add)
-        # # print(mask)
-        # # print("add ",rels_add)
-        # # print("not add ",rels)
-        # #print(rels)
-        # additional = 0
-        # if mask_add is not None:
-        #     a_arc, arcs_add = a_arc[mask_add], arcs_add[mask_add]
-        #     bz, sl = a_arc.shape
-        #     print(a_arc)
-        #     print(s_arc)
-        #     a_rel, rels_add = a_rel[mask_add], rels_add[mask_add]
-        #     a_rel = a_rel[torch.arange(len(arcs_add)), arcs_add]
-        #     arc_loss_add = self.criterion(a_arc, arcs_add)
-        #     rel_loss_add = self.criterion(a_rel, rels_add)
-        #     additional = arc_loss_add * self.alpha + rel_loss_add * self.alpha
-        #     #print("add: ", additional)
-
+        if partial:
+            mask = mask & arcs.ge(0)
+            if mask_add is not None:
+                mask_add = mask_add & arcs_add.ge(0)
+        s_arc, arcs = s_arc[mask], arcs[mask]
+        s_rel, rels = s_rel[mask], rels[mask]
+        s_rel = s_rel[torch.arange(len(arcs)), arcs]
+        arc_loss = self.criterion(s_arc, arcs)
+        rel_loss = self.criterion(s_rel, rels)
+        # print(rel_loss)
+        # print(s_rel)
+        # print(rels)
+        additional = 0
         if mask_add is not None:
-            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha
+            a_arc, arcs_add = a_arc[mask_add], arcs_add[mask_add]
+            a_rel, rels_add = a_rel[mask_add], rels_add[mask_add]
+            a_rel = a_rel[torch.arange(len(arcs_add)), arcs_add]
+            arc_loss_add = self.criterion(a_arc, arcs_add)
+            rel_loss_add = self.criterion(a_rel, rels_add)
+            additional = torch.mul(arc_loss_add, self.alpha) + torch.mul(rel_loss_add, self.alpha)
 
-        return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
+
+        return arc_loss + rel_loss + additional
 
     def decode(self, s_arc, s_rel, mask, tree=False, proj=False):
         r"""
@@ -219,43 +204,90 @@ class EnsembleModel(nn.Module):
 
         return arc_preds, rel_preds
 
-    def modifyscore(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
+    # def modifyscore(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
 
-        score_arc = {}
-        score_rel = {}
+    #     score_arc = {}
+    #     score_rel = {}
 
-        bucket_size, seq_len = adds.shape
+    #     bucket_size, seq_len = adds.shape
 
-        for i, buck in enumerate(a_arc):
-            sen = adds[i]
-            for p1 in range(seq_len):
-                for p2 in range(seq_len):
-                    tup = (sen[p1], sen[p2])
-                    score_arc[tup] = score_arc.get(tup, 0) + buck[p1][p2]
+    #     for i, buck in enumerate(a_arc):
+    #         sen = adds[i]
+    #         for p1 in range(seq_len):
+    #             for p2 in range(seq_len):
+    #                 tup = (sen[p1], sen[p2])
+    #                 score_arc[tup] = score_arc.get(tup, 0) + buck[p1][p2]
             
-        for i, buck in enumerate(a_rel):
-            sen = adds[i]
+    #     for i, buck in enumerate(a_rel):
+    #         sen = adds[i]
+    #         for p1 in range(seq_len):
+    #             for p2 in range(seq_len):
+    #                 for r in range(self.n_rels_add):
+    #                     tup = (sen[p1], sen[p2], r)
+    #                     score_rel[tup] = score_rel.get(tup, 0) + buck[p1][p2][r]
+
+
+    #     bucket_size, seq_len = pos.shape
+
+    #     for i in range(len(s_arc)):
+    #         sen = pos[i]
+    #         for p1 in range(seq_len):
+    #             for p2 in range(seq_len):
+    #                 tup = (sen[p1], sen[p2])
+    #                 s_arc[i][p1][p2] += score_arc.get(tup, 0) * self.alpha
+
+    #     for i in range(len(s_rel)):
+    #         sen = pos[i]
+    #         for p1 in range(seq_len):
+    #             for p2 in range(seq_len):
+    #                 for r in range(self.n_rels_add):
+    #                     tup = (sen[p1], sen[p2], r)
+    #                     s_rel[i][p1][p2][r] += score_rel.get(tup, 0) * self.alpha
+
+    def modifyScore_2(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
+        n_pos = self.args.n_pos
+        score_arc = torch.zeros([n_pos, n_pos], dtype=torch.float32).to(self.args.device)
+        mapping = self.args.mapping
+
+        batch_size, seq_len = adds.shape
+
+        for b, _a_arc in enumerate(a_arc):
             for p1 in range(seq_len):
                 for p2 in range(seq_len):
-                    for r in range(self.n_rels_add):
-                        tup = (sen[p1], sen[p2], r)
-                        score_rel[tup] = score_rel.get(tup, 0) + buck[p1][p2][r]
+                    score_arc[adds[b][p1]][adds[b][p2]] = score_arc[adds[b][p1]][adds[b][p2]] + _a_arc[p1][p2]
+
+        # print(pos.shape)
+        
+        score_rel = torch.zeros([n_pos, n_pos, self.args.n_rels_add], dtype=torch.float32).to(self.args.device)
 
 
-        bucket_size, seq_len = pos.shape
-
-        for i in range(len(s_arc)):
-            sen = pos[i]
+        for b, _a_rel in enumerate(a_rel):
             for p1 in range(seq_len):
                 for p2 in range(seq_len):
-                    tup = (sen[p1], sen[p2])
-                    s_arc[i][p1][p2] += score_arc.get(tup, 0) * self.alpha
+                    score_rel[adds[b][p1]][adds[b][p2]] = _a_rel[p1][p2] + score_rel[adds[b][p1]][adds[b][p2]]
+        
+        
+        # Tmp = score_arc[pos, pos]
+        # print(Tmp.shape)
+        b, seq_len_tviet = pos.shape
 
-        for i in range(len(s_rel)):
-            sen = pos[i]
-            for p1 in range(seq_len):
-                for p2 in range(seq_len):
-                    for r in range(self.n_rels_add):
-                        tup = (sen[p1], sen[p2], r)
-                        s_rel[i][p1][p2][r] += score_rel.get(tup, 0) * self.alpha
+        tmp = torch.zeros([b, seq_len_tviet, seq_len_tviet], dtype=torch.float32).to(self.args.device)
 
+        for i in range(seq_len_tviet):
+            for j in range(seq_len_tviet):
+                tmp[:, i, j] = tmp[:, i, j] + score_arc[pos[:, i], pos[:, j]]
+
+        tmp2 = torch.zeros([b, seq_len_tviet, seq_len_tviet, self.args.n_rels], dtype=torch.float32).to(self.args.device)
+
+        for i in range(seq_len_tviet):
+            for j in range(seq_len_tviet):
+                for r in range(self.args.n_rels_add):
+                    #if mapping[r] != self.args.bos_index:
+                    if mapping[r] != 0:
+                        tmp2[:, i, j, mapping[r]] = tmp2[:, i, j, mapping[r]] + score_rel[pos[:, i], pos[:, j], mapping[r]]
+
+        return s_arc + torch.mul(tmp, self.alpha), s_rel + torch.mul(tmp2, self.alpha)
+        
+        #print(tmp.shape)
+
+        pass
