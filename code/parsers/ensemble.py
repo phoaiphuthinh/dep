@@ -70,7 +70,12 @@ class EnsembleDependencyParser(EnsembleParser):
         bar, metric = progress_bar(loader), AttachmentMetric()
         bar_add = iter(loader_add)
         
-        for words, feats, pos, arcs, rels in bar:
+        for it in bar:
+            if self.args.feat in ('char', 'bert'):
+                words, feats, pos, arcs, rels = it
+            else:
+                words, feats, arcs, rels = it
+                pos = feats
             self.optimizer.zero_grad()
             words_add, arcs_add, rels_add = next(bar_add)
             # print(arcs_add)
@@ -207,13 +212,14 @@ class EnsembleDependencyParser(EnsembleParser):
         if args.feat in ('char', 'bert'):
             origin = CoNLL(FORM=(WORD, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
         else:
-            origin = CoNLL(FORM=WORD, CPOS=FEAT, POS=TAG, HEAD=ARC, DEPREL=REL)
+            origin = CoNLL(FORM=WORD, CPOS=FEAT, HEAD=ARC, DEPREL=REL)
 
         train = Dataset(origin, args.train)
         WORD.build(train, args.min_freq, (Embedding.load(args.embed, args.unk) if args.embed else None))
         FEAT.build(train)
         REL.build(train)
-        TAG.build(train)
+        if args.feat in ('char', 'bert'):
+            TAG.build(train)
         args.update({
             'n_words': len(WORD.vocab),
             'n_feats': len(FEAT.vocab),
@@ -221,8 +227,7 @@ class EnsembleDependencyParser(EnsembleParser):
             'pad_index': WORD.pad_index,
             'unk_index': WORD.unk_index,
             'bos_index': WORD.bos_index,
-            'feat_pad_index': FEAT.pad_index,
-            'n_pos': len(TAG.vocab)
+            'feat_pad_index': FEAT.pad_index
         })
         logger.info(f"{origin}")
         
@@ -252,6 +257,7 @@ class EnsembleDependencyParser(EnsembleParser):
                 # print(eng_rel,' ', val2)
                 if viet_rel == eng_rel:
                     mapping[val2] = val1
+    
         
         #print(mapping)
         
@@ -259,9 +265,11 @@ class EnsembleDependencyParser(EnsembleParser):
             'n_feats_add': len(POS.vocab),
             'n_rels_add': len(REL_ADD.vocab),
             'feat_pad_index_add': POS.pad_index,
-            'mapping':mapping
+            'mapping':mapping,
+            'n_pos' : len(POS.vocab)
         })
         logger.info(f"{addition}")
+
 
         logger.info("Building the model")
         model = cls.MODEL(**args).load_pretrained(WORD.embed).to(args.device)

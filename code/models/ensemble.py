@@ -110,7 +110,7 @@ class EnsembleModel(nn.Module):
             a_arc, a_rel = self.addition(adds)
             #a_arc: [bucket_size, seq_len, seq_len]
         
-            # s_arc, s_rel = self.modifyScore_2(adds, a_arc, a_rel, pos, s_arc, s_rel)
+            self.modifyScore_3(adds, a_arc, a_rel, pos, s_arc, s_rel)
             #print(s_arc.shape)
 
             # s_arc = self.softmax_1(s_arc)
@@ -123,7 +123,7 @@ class EnsembleModel(nn.Module):
 
         a_arc, a_rel = self.addition(pos)
     
-        # s_arc, s_rel = self.modifyScore_2(adds, a_arc, a_rel, pos, s_arc, s_rel)
+        self.modifyScore_3(pos, a_arc, a_rel, pos, s_arc, s_rel)
 
             
         return s_arc, s_rel
@@ -149,30 +149,10 @@ class EnsembleModel(nn.Module):
             ~torch.Tensor:
                 The training loss.
         """
-        
-        if partial:
-            mask = mask & arcs.ge(0)
-            if mask_add is not None:
-                mask_add = mask_add & arcs_add.ge(0)
-        s_arc, arcs = s_arc[mask], arcs[mask]
-        s_rel, rels = s_rel[mask], rels[mask]
-        s_rel = s_rel[torch.arange(len(arcs)), arcs]
-        arc_loss = self.criterion(s_arc, arcs)
-        rel_loss = self.criterion(s_rel, rels)
-        # print(rel_loss)
-        # print(s_rel)
-        # print(rels)
-        additional = 0
         if mask_add is not None:
-            a_arc, arcs_add = a_arc[mask_add], arcs_add[mask_add]
-            a_rel, rels_add = a_rel[mask_add], rels_add[mask_add]
-            a_rel = a_rel[torch.arange(len(arcs_add)), arcs_add]
-            arc_loss_add = self.criterion(a_arc, arcs_add)
-            rel_loss_add = self.criterion(a_rel, rels_add)
-            additional = torch.mul(arc_loss_add, self.alpha) + torch.mul(rel_loss_add, self.alpha)
+            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha
 
-
-        return arc_loss + rel_loss + additional
+        return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
 
     def decode(self, s_arc, s_rel, mask, tree=False, proj=False):
         r"""
@@ -291,3 +271,32 @@ class EnsembleModel(nn.Module):
         #print(tmp.shape)
 
         pass
+
+    def modifyScore_3(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
+
+        n_pos = self.args.n_pos
+        bz, sl = adds.shape
+        _add = adds.unsqueeze(1) #[bz, 1, sl]
+        _add = _add.transpose(2, 1) * sl #[bz, sl, 1]
+        _add = _add.repeat(1, 1, sl).reshape(bz, sl * sl) #[bz, sl, sl] -> [bz, sl * sl]
+        _add = _add + adds.repeat(1, sl)
+        _add = _add.reshape(bz, sl, sl)
+
+
+        score_arc = torch.zeros([n_pos * n_pos], dtype=torch.float32).to(self.args.device)
+
+        for it in range(n_pos * n_pos):
+            mask = _add == it
+            score_arc[it] = a_arc[mask].sum()
+        bz, sl = pos.shape
+        _pos = pos.unsqueeze(1)
+        _pos = _pos.transpose(2, 1) * sl
+        _pos = _pos.repeat(1, 1, sl).reshape(bz, sl * sl)
+        _pos = _pos + pos.repeat(1, sl)
+        _pos = _pos.reshape(bz, sl, sl)
+
+        for it in range(n_pos * n_pos):
+            mask = pos == it
+            s_arc[mask] += score_arc[it] * self.alpha
+        
+        

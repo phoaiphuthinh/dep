@@ -89,8 +89,8 @@ class EnsembleParser(object):
             else:
                 logger.info(f"{t}s elapsed\n")
             elapsed += t
-            # if epoch - best_e >= args.patience:
-            #     break
+            if epoch - best_e >= args.patience:
+                break
         loss, metric = self.load(**args)._evaluate(test.loader)
 
         logger.info(f"Epoch {best_e} saved")

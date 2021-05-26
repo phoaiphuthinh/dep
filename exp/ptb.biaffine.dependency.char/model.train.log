@@ -1,4 +1,4 @@
-2021-05-25 22:58:58 INFO 
+2021-05-26 22:15:36 INFO 
 ---------------------+-------------------------------
 Param                |             Value             
 ---------------------+-------------------------------
@@ -30,13 +30,3 @@ n_embed              |              100
 bert                 |        bert-base-cased        
 ---------------------+-------------------------------
 
-2021-05-25 22:59:54 INFO Loading the data
-2021-05-25 22:59:55 INFO 
-train: Dataset(n_sentences=4287, n_batches=36, n_buckets=32)
-
-2021-05-25 22:59:55 INFO 
-train: Dataset(n_sentences=1400, n_batches=24, n_buckets=24)
-dev:   Dataset(n_sentences=800, n_batches=24, n_buckets=24)
-test:  Dataset(n_sentences=800, n_batches=24, n_buckets=24)
-
-2021-05-25 22:59:55 INFO Epoch 1 / 5000:
