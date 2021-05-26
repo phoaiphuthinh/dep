@@ -83,7 +83,7 @@ class EnsembleDependencyParser(EnsembleParser):
             mask_add[:, 0] = 0
             s_arc, s_rel, a_arc, a_rel = self.model(words, feats, words_add, pos)
             loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, a_arc, a_rel, arcs_add, rels_add, mask_add, self.args.partial)
-            #print(loss)
+            # print(loss)
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
             self.optimizer.step()
@@ -181,6 +181,8 @@ class EnsembleDependencyParser(EnsembleParser):
             parser = cls.load(**args)
             parser.model = cls.MODEL(**parser.args)
             parser.model.load_pretrained(parser.WORD.embed).to(args.device)
+            parser.optimizer = Adam(parser.model.parameters(), **optimizer_args)
+            parser.scheduler = ExponentialLR(parser.optimizer, **scheduler_args)
             return parser
 
         logger.info("Building the fields")
@@ -220,8 +222,13 @@ class EnsembleDependencyParser(EnsembleParser):
             'unk_index': WORD.unk_index,
             'bos_index': WORD.bos_index,
             'feat_pad_index': FEAT.pad_index,
+            'n_pos': len(TAG.vocab)
         })
         logger.info(f"{origin}")
+        
+        # print("tag vocab")
+        # print(REL.vocab.stoi)
+
 
 
         logger.info("Building the fields")
@@ -233,11 +240,26 @@ class EnsembleDependencyParser(EnsembleParser):
         train_add = Dataset(addition, args.train_add)
         POS.build(train_add)
         REL_ADD.build(train_add)
+
+        # print("add vocab")
+        # print(REL_ADD.vocab.stoi)
+        mapping = [0 for i in range(len(REL_ADD.vocab))]
+        for viet_rel in REL.vocab.stoi:
+            for eng_rel in REL_ADD.vocab.stoi:
+                val1 = REL.vocab[viet_rel]
+                val2 = REL_ADD.vocab[eng_rel]
+                # print(viet_rel, ' ', val1)
+                # print(eng_rel,' ', val2)
+                if viet_rel == eng_rel:
+                    mapping[val2] = val1
+        
+        #print(mapping)
         
         args.update({
             'n_feats_add': len(POS.vocab),
             'n_rels_add': len(REL_ADD.vocab),
             'feat_pad_index_add': POS.pad_index,
+            'mapping':mapping
         })
         logger.info(f"{addition}")
 
