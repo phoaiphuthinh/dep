@@ -1,10 +1,13 @@
 *.conllu
 *.ipynb
+*.log
 .DS_Store
 
 glove.6B.100d.txt
 
 __pycache__
+exp/
+.DS_Store/
 
 .ipynb_checkpoints
 

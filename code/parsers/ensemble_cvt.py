@@ -17,10 +17,10 @@ from torch.optim.lr_scheduler import ExponentialLR
 
 logger = get_logger(__name__)
 
-class EnsembleDependencyParser(EnsembleParser):
+class EnsembleDependencyParser_CVT(EnsembleParser):
 
     NAME = 'ensemble-dependency'
-    MODEL = EnsembleModel
+    MODEL = EnsembleModel_CVT
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -76,6 +76,7 @@ class EnsembleDependencyParser(EnsembleParser):
             else:
                 words, feats, arcs, rels = it
                 pos = feats
+            #words = pos
             self.optimizer.zero_grad()
             words_add, arcs_add, rels_add = next(bar_add)
             # print(arcs_add)
@@ -110,6 +111,7 @@ class EnsembleDependencyParser(EnsembleParser):
         total_loss, metric = 0, AttachmentMetric()
 
         for words, feats, pos, arcs, rels in loader:
+            #words = pos
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
