@@ -13,8 +13,8 @@ random.shuffle(data2)
 f = open(sys.argv[3], "w")
 sys.stdout = f
 
-for x in data1[:4000]:
+for x in data1:
     print(x)
 
-for y in data2[:6000]:
+for y in data2:
     print(y)

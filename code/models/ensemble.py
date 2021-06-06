@@ -150,7 +150,7 @@ class EnsembleModel(nn.Module):
                 The training loss.
         """
         if mask_add is not None:
-            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha
+            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) * self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha
 
         return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
 
@@ -288,6 +288,9 @@ class EnsembleModel(nn.Module):
         for it in range(n_pos * n_pos):
             mask = _add == it
             score_arc[it] = a_arc[mask].sum()
+
+        score_arc = torch.sigmoid(score_arc)
+
         bz, sl = pos.shape
         _pos = pos.unsqueeze(1)
         _pos = _pos.transpose(2, 1) * sl
@@ -296,7 +299,7 @@ class EnsembleModel(nn.Module):
         _pos = _pos.reshape(bz, sl, sl)
 
         for it in range(n_pos * n_pos):
-            mask = pos == it
+            mask = _pos == it
             s_arc[mask] += score_arc[it] * self.alpha
         
         

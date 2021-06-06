@@ -28,13 +28,13 @@ class EnsembleDependencyParser(EnsembleParser):
         if self.args.feat in ('char', 'bert'):
             self.WORD, self.FEAT = self.origin.FORM
         else:
-            self.WORD, self.FEAT = self.origin.FORM, self.origin.CPOS
+            self.WORD, self.FEAT = self.origin.FORM, self.origin.POS
         self.ARC, self.REL = self.origin.HEAD, self.origin.DEPREL
         self.puncts = torch.tensor([i
                                     for s, i in self.WORD.vocab.stoi.items()
                                     if ispunct(s)]).to(self.args.device)
 
-        self.POS = self.addition.CPOS
+        self.POS = self.addition.POS
         self.ARC_ADD, self.REL_ADD = self.addition.HEAD, self.addition.DEPREL
 
 
@@ -210,9 +210,9 @@ class EnsembleDependencyParser(EnsembleParser):
         REL = Field('rels', bos=bos)
         TAG = Field('pos', bos=bos)
         if args.feat in ('char', 'bert'):
-            origin = CoNLL(FORM=(WORD, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
+            origin = CoNLL(FORM=(WORD, FEAT), POS=TAG, HEAD=ARC, DEPREL=REL)
         else:
-            origin = CoNLL(FORM=WORD, CPOS=FEAT, HEAD=ARC, DEPREL=REL)
+            origin = CoNLL(FORM=WORD, POS=FEAT, HEAD=ARC, DEPREL=REL)
 
         train = Dataset(origin, args.train)
         WORD.build(train, args.min_freq, (Embedding.load(args.embed, args.unk) if args.embed else None))
@@ -240,7 +240,7 @@ class EnsembleDependencyParser(EnsembleParser):
         POS = Field('tags', bos=bos)
         ARC_ADD = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL_ADD = Field('rels', bos=bos)
-        addition = CoNLL(CPOS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
+        addition = CoNLL(POS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
 
         train_add = Dataset(addition, args.train_add)
         POS.build(train_add)
@@ -258,8 +258,6 @@ class EnsembleDependencyParser(EnsembleParser):
                 if viet_rel == eng_rel:
                     mapping[val2] = val1
     
-        
-        #print(mapping)
         
         args.update({
             'n_feats_add': len(POS.vocab),
