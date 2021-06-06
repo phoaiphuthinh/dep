@@ -1,4 +1,5 @@
 *.conllu
+*.conll
 *.ipynb
 *.log
 .DS_Store
@@ -12,4 +13,3 @@ exp/
 .ipynb_checkpoints
 
 test.py
-mod.py
