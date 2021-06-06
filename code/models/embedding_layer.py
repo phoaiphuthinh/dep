@@ -65,9 +65,19 @@ class Embedding_Layer(nn.Module):
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
-            # nn.init.zeros_(self.word_embed.weight)
-            nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
+            nn.init.zeros_(self.word_embed.weight)
+            #nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
+
+    def _freeze(self):
+        self.word_embed.eval()
+        for params in self.word_embed.parameters():
+            params.requires_grad = False
+    
+    def _unfreeze(self):
+        self.word_embed.train()
+        for params in self.word_embed.parameters():
+            params.requires_grad = True
 
     def forward(self, words, feats=None):
         batch_size, seq_len = words.shape
@@ -86,12 +96,15 @@ class Embedding_Layer(nn.Module):
             word_embed += self.pretrained(words)
         feat_embed = self.feat_embed(feats) if feats is not None else None
         if feats is not None:
-            word_embed += feat_embed
-            word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed) 
             #word_embed += feat_embed
+            word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed) 
+            word_embed += feat_embed
         else:
             word_embed = self.embed_dropout(word_embed)
             word_embed = word_embed[0]
+
+        # with open("test.txt", "a+") as f:
+        #     print(mask, file=f)
         return word_embed, feat_embed, mask, seq_len
 
         

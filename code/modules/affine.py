@@ -51,7 +51,8 @@ class Biaffine(nn.Module):
         return f"{self.__class__.__name__}({s})"
 
     def reset_parameters(self):
-        nn.init.zeros_(self.weight)
+        #nn.init.zeros_(self.weight)
+        nn.init.orthogonal_(self.weight)
 
     def forward(self, x, y):
         r"""

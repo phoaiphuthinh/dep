@@ -8,6 +8,7 @@ glove.6B.100d.txt
 __pycache__
 exp/
 .DS_Store/
+.DS_Store
 
 .ipynb_checkpoints
 
