@@ -76,7 +76,7 @@ class EnsembleDependencyParser_CVT(EnsembleParser):
             else:
                 words, feats, arcs, rels = it
                 pos = feats
-            #words = pos
+
             self.optimizer.zero_grad()
             words_add, arcs_add, rels_add = next(bar_add)
             # print(arcs_add)
@@ -89,7 +89,6 @@ class EnsembleDependencyParser_CVT(EnsembleParser):
             mask_add[:, 0] = 0
             s_arc, s_rel, a_arc, a_rel = self.model(words, feats, words_add, pos)
             loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, a_arc, a_rel, arcs_add, rels_add, mask_add, self.args.partial)
-            # print(loss)
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
             self.optimizer.step()
@@ -104,6 +103,19 @@ class EnsembleDependencyParser_CVT(EnsembleParser):
             metric(arc_preds, rel_preds, arcs, rels, mask)
             bar.set_postfix_str(f"lr: {self.scheduler.get_last_lr()[0]:.4e} - loss: {loss:.4f} - {metric}")
 
+            self.optimizer.zero_grad()
+            loss_guess = self.model(words, feats, words_add, pos, trainpos=True)
+            loss_guess.backward()
+            #nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
+            self.optimizer.step()
+            self.scheduler.step()
+
+            self.optimizer.zero_grad()
+            loss_cvt = self.model(words, feats, words_add, pos, cvt=True)
+            loss_cvt.backward()
+            self.optimizer.step()
+            self.scheduler.step()
+
     @torch.no_grad()
     def _evaluate(self, loader):
         self.model.eval()
@@ -111,7 +123,6 @@ class EnsembleDependencyParser_CVT(EnsembleParser):
         total_loss, metric = 0, AttachmentMetric()
 
         for words, feats, pos, arcs, rels in loader:
-            #words = pos
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0

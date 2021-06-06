@@ -148,6 +148,7 @@ class NoEmbeddingBiaffineDependencyModel(nn.Module):
             nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
 
+
     def forward(self, word_embed, feat_embed, mask, seq_len):
         r"""
         Args:
@@ -373,6 +374,54 @@ class NoEmbeddingAffineDependencyModel(nn.Module):
         self.criterion = nn.CrossEntropyLoss()
         self.pad_index = pad_index_add
         self.unk_index = unk_index_add
+    
+    def _unfreeze(self):
+        #self.lstm.train()
+        self.mlp_arc_d.train()
+        self.mlp_arc_h.train()
+        self.mlp_rel_d.train()
+        self.mlp_rel_h.train()
+        self.arc_attn.train()
+        self.rel_attn.train()
+
+        # for param in self.lstm.parameters():
+        #     param.requires_grad = True
+
+        for param in self.mlp_arc_d.parameters():
+            param.requires_grad = True
+        for param in self.mlp_arc_h.parameters():
+            param.requires_grad = True
+        for param in self.mlp_rel_d.parameters():
+            param.requires_grad = True
+        for param in self.mlp_rel_h.parameters():
+            param.requires_grad = True
+
+        for param in self.arc_attn.parameters():
+            param.requires_grad = True
+        for param in self.rel_attn.parameters():
+            param.requires_grad = True
+
+    def _freeze(self):
+        self.mlp_arc_d.eval()
+        self.mlp_arc_h.eval()
+        self.mlp_rel_d.eval()
+        self.mlp_rel_h.eval()
+        self.arc_attn.eval()
+        self.rel_attn.eval()
+
+        for param in self.mlp_arc_d.parameters():
+            param.requires_grad = False
+        for param in self.mlp_arc_h.parameters():
+            param.requires_grad = False
+        for param in self.mlp_rel_d.parameters():
+            param.requires_grad = False
+        for param in self.mlp_rel_h.parameters():
+            param.requires_grad = False
+
+        for param in self.arc_attn.parameters():
+            param.requires_grad = False
+        for param in self.rel_attn.parameters():
+            param.requires_grad = False
 
     def load_pretrained(self, embed=None):
         if embed is not None:
@@ -381,7 +430,7 @@ class NoEmbeddingAffineDependencyModel(nn.Module):
             nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
 
-    def forward(self, feat_embed, mask, seq_len):
+    def forward(self, feat_embed, mask, seq_len, cvt=False):
         r"""
         Args:
             words (~torch.LongTensor): ``[batch_size, seq_len]``.
@@ -419,7 +468,6 @@ class NoEmbeddingAffineDependencyModel(nn.Module):
         x, _ = self.lstm(x)
         x, _ = pad_packed_sequence(x, True, total_length=seq_len)
         x = self.lstm_dropout(x)
-        print(x.shape)
 
         # apply MLPs to the BiLSTM output states
         arc_d = self.mlp_arc_d(x)
@@ -433,8 +481,10 @@ class NoEmbeddingAffineDependencyModel(nn.Module):
         s_rel = self.rel_attn(rel_d, rel_h).permute(0, 2, 3, 1)
         # set the scores that exceed the length of each sentence to -inf
         # s_arc.masked_fill_(~mask.unsqueeze(1), float('-inf'))
-
-        return s_arc, s_rel
+        if not cvt:
+            return s_arc, s_rel
+        else:
+            return s_arc, s_rel, x
 
     def loss(self, s_arc, s_rel, arcs, rels, mask, partial=False):
         r"""
