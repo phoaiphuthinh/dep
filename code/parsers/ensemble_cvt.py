@@ -17,10 +17,10 @@ from torch.optim.lr_scheduler import ExponentialLR
 
 logger = get_logger(__name__)
 
-class EnsembleDependencyParser(EnsembleParser):
+class EnsembleDependencyParser_CVT(EnsembleParser):
 
     NAME = 'ensemble-dependency'
-    MODEL = EnsembleModel
+    MODEL = EnsembleModel_CVT
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -28,13 +28,13 @@ class EnsembleDependencyParser(EnsembleParser):
         if self.args.feat in ('char', 'bert'):
             self.WORD, self.FEAT = self.origin.FORM
         else:
-            self.WORD, self.FEAT = self.origin.FORM, self.origin.POS
+            self.WORD, self.FEAT = self.origin.FORM, self.origin.CPOS
         self.ARC, self.REL = self.origin.HEAD, self.origin.DEPREL
         self.puncts = torch.tensor([i
                                     for s, i in self.WORD.vocab.stoi.items()
                                     if ispunct(s)]).to(self.args.device)
 
-        self.POS = self.addition.POS
+        self.POS = self.addition.CPOS
         self.ARC_ADD, self.REL_ADD = self.addition.HEAD, self.addition.DEPREL
 
 
@@ -76,6 +76,7 @@ class EnsembleDependencyParser(EnsembleParser):
             else:
                 words, feats, arcs, rels = it
                 pos = feats
+
             self.optimizer.zero_grad()
             words_add, arcs_add, rels_add = next(bar_add)
             # print(arcs_add)
@@ -88,7 +89,6 @@ class EnsembleDependencyParser(EnsembleParser):
             mask_add[:, 0] = 0
             s_arc, s_rel, a_arc, a_rel = self.model(words, feats, words_add, pos)
             loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, a_arc, a_rel, arcs_add, rels_add, mask_add, self.args.partial)
-            # print(loss)
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
             self.optimizer.step()
@@ -102,6 +102,19 @@ class EnsembleDependencyParser(EnsembleParser):
                 mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
             metric(arc_preds, rel_preds, arcs, rels, mask)
             bar.set_postfix_str(f"lr: {self.scheduler.get_last_lr()[0]:.4e} - loss: {loss:.4f} - {metric}")
+
+            self.optimizer.zero_grad()
+            loss_guess = self.model(words, feats, words_add, pos, trainpos=True)
+            loss_guess.backward()
+            #nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
+            self.optimizer.step()
+            self.scheduler.step()
+
+            self.optimizer.zero_grad()
+            loss_cvt = self.model(words, feats, words_add, pos, cvt=True)
+            loss_cvt.backward()
+            self.optimizer.step()
+            self.scheduler.step()
 
     @torch.no_grad()
     def _evaluate(self, loader):
@@ -211,9 +224,9 @@ class EnsembleDependencyParser(EnsembleParser):
         TAG = Field('pos', bos=bos)
         #TAG = Field('pos', bos=bos, unk=unk, lower=True)
         if args.feat in ('char', 'bert'):
-            origin = CoNLL(FORM=(WORD, FEAT), POS=TAG, HEAD=ARC, DEPREL=REL)
+            origin = CoNLL(FORM=(WORD, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
         else:
-            origin = CoNLL(FORM=WORD, POS=FEAT, HEAD=ARC, DEPREL=REL)
+            origin = CoNLL(FORM=WORD, CPOS=FEAT, HEAD=ARC, DEPREL=REL)
 
         train = Dataset(origin, args.train)
         WORD.build(train, args.min_freq, (Embedding.load(args.embed, args.unk) if args.embed else None))
@@ -241,7 +254,7 @@ class EnsembleDependencyParser(EnsembleParser):
         POS = Field('tags', bos=bos)
         ARC_ADD = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL_ADD = Field('rels', bos=bos)
-        addition = CoNLL(POS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
+        addition = CoNLL(CPOS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
 
         train_add = Dataset(addition, args.train_add)
         POS.build(train_add)
@@ -259,6 +272,8 @@ class EnsembleDependencyParser(EnsembleParser):
                 if viet_rel == eng_rel:
                     mapping[val2] = val1
     
+        
+        #print(mapping)
         
         args.update({
             'n_feats_add': len(POS.vocab),

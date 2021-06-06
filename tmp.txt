@@ -1,3 +1,13 @@
+            #word guessing strategy
+
+            # self.optimizer.zero_grad()
+            # loss = self.model(words=None, feats=None, adds=words_add, pos=None, cvt=True)
+            # loss.backward()
+            # nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
+            # self.optimizer.step()
+            # self.scheduler.step()
+            
+
 import torch
 import torch.nn as nn
 from code.modules import (LSTM, MLP, BertEmbedding, Biaffine, CharLSTM,
@@ -8,10 +18,13 @@ from code.utils import Config
 from code.utils.alg import eisner, eisner2o, mst
 from code.utils.transform import CoNLL
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from code.models.dependency import BiaffineDependencyModel, AffineDependencyModel
+#from code.models.dependency import BiaffineDependencyModel, AffineDependencyModel
+from code.models.dependency2 import NoEmbeddingBiaffineDependencyModel, NoEmbeddingAffineDependencyModel
+from code.models.embedding_layer import Embedding_Layer
+from code.models.guessing_layer import Guessing_Layer
 
 
-class EnsembleModel(nn.Module):
+class EnsembleModel_CVT(nn.Module):
 
 
     def __init__(self, 
@@ -48,12 +61,51 @@ class EnsembleModel(nn.Module):
 
         print(self.args)
 
-        self.word_embed = nn.Embedding(num_embeddings=n_words,
-                                       embedding_dim=n_embed)
+        self.embedding_layer = Embedding_Layer(n_words=n_words,
+                                                n_feats=n_feats,
+                                                n_rels=n_rels,
+                                                feat=feat,
+                                                n_embed=n_embed,
+                                                n_feat_embed=n_feat_embed,
+                                                n_char_embed=n_char_embed,
+                                                bert=bert,
+                                                n_feats_add=n_feats_add,
+                                                n_bert_layers=n_bert_layers,
+                                                mix_dropout=mix_dropout,
+                                                embed_dropout=embed_dropout,
+                                                n_lstm_hidden=n_lstm_hidden,
+                                                n_lstm_layers=n_lstm_layers,
+                                                lstm_dropout=lstm_dropout,
+                                                n_mlp_arc=n_mlp_arc,
+                                                n_mlp_rel=n_mlp_rel,
+                                                mlp_dropout=mlp_dropout,
+                                                feat_pad_index=feat_pad_index,
+                                                pad_index=pad_index,
+                                                unk_index=unk_index)
+        
+        self.embedding_layer_add = Embedding_Layer(n_words=n_feats_add,
+                                                n_feats=n_feats,
+                                                n_rels=n_rels,
+                                                feat=feat,
+                                                n_embed=n_embed,
+                                                n_feat_embed=n_feat_embed,
+                                                n_char_embed=n_char_embed,
+                                                bert=bert,
+                                                n_feats_add=n_feats_add,
+                                                n_bert_layers=n_bert_layers,
+                                                mix_dropout=mix_dropout,
+                                                embed_dropout=embed_dropout,
+                                                n_lstm_hidden=n_lstm_hidden,
+                                                n_lstm_layers=n_lstm_layers,
+                                                lstm_dropout=lstm_dropout,
+                                                n_mlp_arc=n_mlp_arc,
+                                                n_mlp_rel=n_mlp_rel,
+                                                mlp_dropout=mlp_dropout,
+                                                feat_pad_index=feat_pad_index,
+                                                pad_index=pad_index,
+                                                unk_index=unk_index)
 
-        #print(n_words, n_feats_add)
-
-        self.origin = BiaffineDependencyModel(  n_words=n_words,
+        self.origin = NoEmbeddingBiaffineDependencyModel(n_words=n_words,
                                                 n_feats=n_feats,
                                                 n_rels=n_rels,
                                                 feat=feat,
@@ -73,7 +125,20 @@ class EnsembleModel(nn.Module):
                                                 feat_pad_index=feat_pad_index,
                                                 pad_index=pad_index,
                                                 unk_index=unk_index) #More argument
-        self.addition = AffineDependencyModel(n_feats_add=n_feats_add,
+
+        # self.origin = NoEmbeddingAffineDependencyModel(n_feats_add=n_feats_add,
+        #                                         n_rels_add=n_rels,
+        #                                         embed_dropout=embed_dropout,
+        #                                         n_lstm_hidden=n_lstm_hidden,
+        #                                         n_lstm_layers=n_lstm_layers,
+        #                                         lstm_dropout=lstm_dropout,
+        #                                         n_mlp_arc=n_mlp_arc,
+        #                                         n_mlp_rel=n_mlp_rel,
+        #                                         mlp_dropout=mlp_dropout,
+        #                                         pad_index_add=pad_index_add,
+        #                                         unk_index_add=unk_index_add) #More
+
+        self.addition = NoEmbeddingAffineDependencyModel(n_feats_add=n_feats_add,
                                                 n_rels_add=n_rels_add,
                                                 embed_dropout=embed_dropout,
                                                 n_lstm_hidden=n_lstm_hidden,
@@ -85,44 +150,123 @@ class EnsembleModel(nn.Module):
                                                 pad_index_add=pad_index_add,
                                                 unk_index_add=unk_index_add) #More
 
+        self.guessing_layer = Guessing_Layer(n_in=n_lstm_hidden*2, n_out=n_embed, pad_index=pad_index, dropout=mlp_dropout)
+
         self.criterion = nn.CrossEntropyLoss()
+        
+        self.criterion_unsupervised = nn.KLDivLoss(reduction='batchmean')
+
         self.pad_index = pad_index
         self.unk_index = unk_index
         self.alpha = alpha
         self.n_rels_add = n_rels
-        self.softmax_arc = nn.Softmax(dim=1)
+        self.softmax_arc = nn.Softmax(dim=2)
         self.softmax_rel = nn.Softmax(dim=3)
         #self.redirect
 
 
     def load_pretrained(self, embed=None):
         if embed is not None:
-            self.pretrained = nn.Embedding.from_pretrained(embed)
-            # nn.init.zeros_(self.word_embed.weight)
-            nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
+            # self.pretrained = nn.Embedding.from_pretrained(embed)
+            # # nn.init.zeros_(self.word_embed.weight)
+            # nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
+            #self.embedding_layer = self.embedding_layer.load_pretrained(embed)
+            self.embedding_layer_add = self.embedding_layer_add.load_pretrained(embed)
         return self
     
 
-    def forward(self, words, feats, adds=None, pos=None):
+    def forward(self, words, feats, adds=None, pos=None, cvt=False):
 
-        s_arc, s_rel = self.origin(words, feats)
-        if adds is not None:
-            a_arc, a_rel = self.addition(adds)
-            #a_arc: [bucket_size, seq_len, seq_len]
+        if not cvt:
+
+            self._unfreeze_model()
+
+            word_embed_tviet, feat_embed_tviet, mask_tviet, seq_len_tviet = self.embedding_layer(words, feats)
+            #print(type(word_embed_tviet))
+            
+            #s_arc, s_rel = self.origin(word_embed_tviet, feat_embed_tviet, mask=mask_tviet, seq_len=seq_len_tviet)
+            s_arc, s_rel = self.origin(word_embed_tviet, feat_embed_tviet, mask=mask_tviet, seq_len=seq_len_tviet)
+
+            if adds is not None:
+                
+                word_embed_tanh, _, mask_tanh, seq_len_tanh = self.embedding_layer_add(adds)
+                #print(type(word_embed_tanh))
+
+                a_arc, a_rel = self.addition(word_embed_tanh, mask=mask_tanh, seq_len=seq_len_tanh)
+
+                #word_embed_tanh_2, _, mask_tanh_2, seq_len_tanh_2 = self.embedding_layer_add(pos)
+
+                #pos_arc, pos_rel = self.addition(word_embed_tanh_2, mask=mask_tanh_2, seq_len=seq_len_tanh_2)
+                
+                #a_arc: [bucket_size, seq_len, seq_len]
+            
+                self.modifyScore_3(adds, a_arc, a_rel, pos, s_arc, s_rel, alpha=self.alpha)
+
+                #s_arc = self.softmax_arc(s_arc)
+
+
+                #a_arc = self.softmax_arc(a_arc)
+ 
+                
+                return s_arc, s_rel, a_arc, a_rel#, pos_arc, pos_rel
+
+
+            word_embed_tanh, _, mask_tanh, seq_len_tanh = self.embedding_layer_add(pos)
+            a_arc, a_rel = self.addition(word_embed_tanh, mask=mask_tanh, seq_len=seq_len_tanh)
         
-            self.modifyScore_3(adds, a_arc, a_rel, pos, s_arc, s_rel)
+            self.modifyScore_3(pos, a_arc, a_rel, pos, s_arc, s_rel, alpha=self.alpha)
+
+            #s_arc = self.softmax_arc(s_arc)
+
+            #a_arc = self.softmax_arc(a_arc)
+
+            return s_arc, s_rel
+
+        else:
             
-            return s_arc, s_rel, a_arc, a_rel
+            self._freeze_model()
 
-        a_arc, a_rel = self.addition(pos)
-    
-        self.modifyScore_3(pos, a_arc, a_rel, pos, s_arc, s_rel)
+            word_embed_tanh, _, mask_tanh, seq_len_tanh = self.embedding_layer_add(adds)
 
+            a_arc, a_rel, lstm = self.addition(word_embed_tanh, mask=mask_tanh, seq_len=seq_len_tanh, cvt=True)
+
+            guessed_ = self.guessing_layer(lstm, mask=mask_tanh)
+
+            s_arc, s_rel = self.origin(guessed_, mask=mask_tanh, seq_len=seq_len_tanh)
+
+            s_arc = s_arc.detach()
+            s_rel = s_rel.detach()
+
+            loss = (self.criterion_unsupervised(a_arc, s_arc)) * self.alpha * 2
             
-        return s_arc, s_rel
+            return loss
 
+            #return None, None
+        #pass
 
-    def loss(self, s_arc, s_rel, arcs, rels, mask, a_arc=None, a_rel=None, arcs_add=None,rels_add=None, mask_add=None, partial=False):
+    def _freeze_model(self):
+        # self.encoder.eval()
+        self.origin.eval()
+        # for params in self.encoder.parameters():
+        #     params.requires_grad = False
+        self.embedding_layer.eval()
+        for params in self.origin.parameters():
+            params.requires_grad = False
+        for params in self.embedding_layer.parameters():
+            params.requires_grad = False
+
+    def _unfreeze_model(self):
+        # self.encoder.train()
+        self.origin.train()
+        self.embedding_layer.train()
+        # for params in self.encoder.parameters():
+        #     params.requires_grad = True
+        for params in self.origin.parameters():
+            params.requires_grad = True
+        for params in self.embedding_layer.parameters():
+            params.requires_grad = True
+
+    def loss(self, s_arc, s_rel, arcs, rels, mask, a_arc=None, a_rel=None, arcs_add=None,rels_add=None, mask_add=None, pos_arc=None, pos_rel=None, partial=False):
         r"""
         Args:
             s_arc (~torch.Tensor): ``[batch_size, seq_len, seq_len]``.
@@ -143,7 +287,7 @@ class EnsembleModel(nn.Module):
                 The training loss.
         """
         if mask_add is not None:
-            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) * self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha
+            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha #+ self.addition.loss(pos_arc, pos_rel, arcs, rels, mask) * self.alpha * 2
 
         return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
 
@@ -265,7 +409,7 @@ class EnsembleModel(nn.Module):
 
         pass
 
-    def modifyScore_3(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
+    def modifyScore_3(self, adds, a_arc, a_rel, pos, s_arc, s_rel, alpha):
 
         n_pos = self.args.n_pos
         bz, sl = adds.shape
@@ -281,9 +425,6 @@ class EnsembleModel(nn.Module):
         for it in range(n_pos * n_pos):
             mask = _add == it
             score_arc[it] = a_arc[mask].sum()
-
-        score_arc = torch.sigmoid(score_arc)
-
         bz, sl = pos.shape
         _pos = pos.unsqueeze(1)
         _pos = _pos.transpose(2, 1) * sl
@@ -292,7 +433,7 @@ class EnsembleModel(nn.Module):
         _pos = _pos.reshape(bz, sl, sl)
 
         for it in range(n_pos * n_pos):
-            mask = _pos == it
-            s_arc[mask] += score_arc[it] * self.alpha
+            mask = pos == it
+            s_arc[mask] += score_arc[it] * alpha
         
         
