@@ -13,6 +13,6 @@ Results from the model using PhoBERT embedding
 
 |  | UAS | LAS |
 |----|---|---|
-| Only Vietnamese | 85.70 | 77.80 |
-| Only English | 85.60 | 77.57 |
+| Only Vietnamese | 85.73 | 77.92 |
+| Only English | 85.46 | 77.44 |
 |  Vi + En  | 85.83 | 77.82 |
