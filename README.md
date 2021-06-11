@@ -5,7 +5,7 @@ Result from POS tag (delexicalized model)
 |  | UAS | LAS |
 |----|---|---|
 | Only Vietnamese (base) | 76.06 | 67.95 |
-| Only English | 46.99 |  |
+| Only English | 48.69 | - |
 |  Vi + En  | 76.27 | 67.70 |
 
 Results from the model using PhoBERT embedding
