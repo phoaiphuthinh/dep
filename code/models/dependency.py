@@ -146,7 +146,7 @@ class BiaffineDependencyModel(nn.Module):
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
-            # nn.init.zeros_(self.word_embed.weight)
+            #nn.init.zeros_(self.word_embed.weight)
             nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
 
@@ -379,7 +379,7 @@ class AffineDependencyModel(nn.Module):
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
-            # nn.init.zeros_(self.word_embed.weight)
+            #nn.init.zeros_(self.feat_embed.weight)
             nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
 
@@ -406,7 +406,7 @@ class AffineDependencyModel(nn.Module):
         ext_words = words
         # set the indices larger than num_embeddings to unk_index
         if hasattr(self, 'pretrained'):
-            ext_mask = words.ge(self.word_embed.num_embeddings)
+            ext_mask = words.ge(self.feat_embed.num_embeddings)
             ext_words = words.masked_fill(ext_mask, self.unk_index)
 
         # get outputs from embedding layers
@@ -415,8 +415,8 @@ class AffineDependencyModel(nn.Module):
             feat_embed += self.pretrained(words)
         feat_embed = self.embed_dropout(feat_embed)
         # concatenate the word and feat representations
-        embed = torch.cat((feat_embed), -1)
-
+        embed = torch.cat((feat_embed[0], ), -1)
+        
         x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
         x, _ = self.lstm(x)
         x, _ = pad_packed_sequence(x, True, total_length=seq_len)

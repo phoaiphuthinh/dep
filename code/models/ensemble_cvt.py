@@ -175,8 +175,8 @@ class EnsembleModel_CVT(nn.Module):
 
 
     def load_pretrained(self, embed=None):
-        if embed is not None:
-            self.embedding_layer_add = self.embedding_layer_add.load_pretrained(embed)
+        # if embed is not None:
+        #     self.embedding_layer_add = self.embedding_layer_add.load_pretrained(embed)
         return self
     
     def word_guessing_tviet_forward(self, words, feats, pos):
@@ -228,13 +228,11 @@ class EnsembleModel_CVT(nn.Module):
 
                 guessed_ = self.guessing_layer(lstm, mask=mask_tanh)
 
-                #guessed_ = guessed_.detach()
+                # guess_arc, guess_rel = self.origin(guessed_, mask=mask_tanh, seq_len=seq_len_tanh)
+                # guess_arc = guess_arc.detach()
+                # guess_rel = guess_rel.detach()
 
-                guess_arc, guess_rel = self.origin(guessed_, mask=mask_tanh, seq_len=seq_len_tanh)
-                guess_arc = guess_arc.detach()
-                guess_rel = guess_rel.detach()
-
-                a_arc = a_arc * 0.5 + guess_arc
+                #a_arc = a_arc
                 #a_rel = a_rel + 0.5 * guess_rel
             
                 self.modifyScore_3(adds, a_arc, a_rel, pos, s_arc, s_rel)
@@ -246,13 +244,13 @@ class EnsembleModel_CVT(nn.Module):
 
             a_arc, a_rel, lstm = self.addition(word_embed_tanh, mask=mask_tanh, seq_len=seq_len_tanh, cvt=True)
 
-            guessed_ = self.guessing_layer(lstm, mask=mask_tanh)
+            # guessed_ = self.guessing_layer(lstm, mask=mask_tanh)
 
-            guess_arc, guess_rel = self.origin(guessed_, mask=mask_tanh, seq_len=seq_len_tanh)
-            guess_arc = guess_arc.detach()
-            guess_rel = guess_rel.detach()
+            # guess_arc, guess_rel = self.origin(guessed_, mask=mask_tanh, seq_len=seq_len_tanh)
+            # guess_arc = guess_arc.detach()
+            # guess_rel = guess_rel.detach()
 
-            a_arc = a_arc * 0.5 + guess_arc
+            # a_arc = a_arc * 0.5 + guess_arc
 
             self.modifyScore_3(pos, a_arc, a_rel, pos, s_arc, s_rel)
 
@@ -352,94 +350,6 @@ class EnsembleModel_CVT(nn.Module):
 
         return arc_preds, rel_preds
 
-    # def modifyscore(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
-
-    #     score_arc = {}
-    #     score_rel = {}
-
-    #     bucket_size, seq_len = adds.shape
-
-    #     for i, buck in enumerate(a_arc):
-    #         sen = adds[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 tup = (sen[p1], sen[p2])
-    #                 score_arc[tup] = score_arc.get(tup, 0) + buck[p1][p2]
-            
-    #     for i, buck in enumerate(a_rel):
-    #         sen = adds[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 for r in range(self.n_rels_add):
-    #                     tup = (sen[p1], sen[p2], r)
-    #                     score_rel[tup] = score_rel.get(tup, 0) + buck[p1][p2][r]
-
-
-    #     bucket_size, seq_len = pos.shape
-
-    #     for i in range(len(s_arc)):
-    #         sen = pos[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 tup = (sen[p1], sen[p2])
-    #                 s_arc[i][p1][p2] += score_arc.get(tup, 0) * self.alpha
-
-    #     for i in range(len(s_rel)):
-    #         sen = pos[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 for r in range(self.n_rels_add):
-    #                     tup = (sen[p1], sen[p2], r)
-    #                     s_rel[i][p1][p2][r] += score_rel.get(tup, 0) * self.alpha
-
-    def modifyScore_2(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
-        n_pos = self.args.n_pos
-        score_arc = torch.zeros([n_pos, n_pos], dtype=torch.float32).to(self.args.device)
-        mapping = self.args.mapping
-
-        batch_size, seq_len = adds.shape
-
-        for b, _a_arc in enumerate(a_arc):
-            for p1 in range(seq_len):
-                for p2 in range(seq_len):
-                    score_arc[adds[b][p1]][adds[b][p2]] = score_arc[adds[b][p1]][adds[b][p2]] + _a_arc[p1][p2]
-
-        # print(pos.shape)
-        
-        score_rel = torch.zeros([n_pos, n_pos, self.args.n_rels_add], dtype=torch.float32).to(self.args.device)
-
-
-        for b, _a_rel in enumerate(a_rel):
-            for p1 in range(seq_len):
-                for p2 in range(seq_len):
-                    score_rel[adds[b][p1]][adds[b][p2]] = _a_rel[p1][p2] + score_rel[adds[b][p1]][adds[b][p2]]
-        
-        
-        # Tmp = score_arc[pos, pos]
-        # print(Tmp.shape)
-        b, seq_len_tviet = pos.shape
-
-        tmp = torch.zeros([b, seq_len_tviet, seq_len_tviet], dtype=torch.float32).to(self.args.device)
-
-        for i in range(seq_len_tviet):
-            for j in range(seq_len_tviet):
-                tmp[:, i, j] = tmp[:, i, j] + score_arc[pos[:, i], pos[:, j]]
-
-        tmp2 = torch.zeros([b, seq_len_tviet, seq_len_tviet, self.args.n_rels], dtype=torch.float32).to(self.args.device)
-
-        for i in range(seq_len_tviet):
-            for j in range(seq_len_tviet):
-                for r in range(self.args.n_rels_add):
-                    #if mapping[r] != self.args.bos_index:
-                    if mapping[r] != 0:
-                        tmp2[:, i, j, mapping[r]] = tmp2[:, i, j, mapping[r]] + score_rel[pos[:, i], pos[:, j], mapping[r]]
-
-        return s_arc + torch.mul(tmp, self.alpha), s_rel + torch.mul(tmp2, self.alpha)
-        
-        #print(tmp.shape)
-
-        pass
-
     def modifyScore_3(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
 
         n_pos = self.args.n_pos
@@ -456,6 +366,9 @@ class EnsembleModel_CVT(nn.Module):
         for it in range(n_pos * n_pos):
             mask = _add == it
             score_arc[it] = a_arc[mask].sum()
+
+        score_arc = torch.sigmoid(score_arc)
+
         bz, sl = pos.shape
         _pos = pos.unsqueeze(1)
         _pos = _pos.transpose(2, 1) * sl
@@ -464,5 +377,5 @@ class EnsembleModel_CVT(nn.Module):
         _pos = _pos.reshape(bz, sl, sl)
 
         for it in range(n_pos * n_pos):
-            mask = pos == it
+            mask = _pos == it
             s_arc[mask] += score_arc[it] * self.alpha

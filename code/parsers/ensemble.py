@@ -3,7 +3,7 @@ import os
 
 import torch
 import torch.nn as nn
-from code.models import (EnsembleModel, EnsembleModel_CVT)
+from code.models import (EnsembleModel)
 from code.parsers.parser import Parser
 from code.utils import Config, Dataset, Embedding
 from code.utils.common import bos, pad, unk
@@ -77,9 +77,14 @@ class EnsembleDependencyParser(EnsembleParser):
                 words, feats, arcs, rels = it
                 pos = feats
             self.optimizer.zero_grad()
-            words_add, arcs_add, rels_add = next(bar_add)
-            # print(arcs_add)
-            # print(rels_add)
+            it_nx = next(bar_add, None)
+            if (it_nx is None):
+                bar_add = iter(loader_add)
+                words_add, arcs_add, rels_add = next(bar_add)
+            else:
+                words_add, arcs_add, rels_add = it_nx
+            #print(words_add)
+            #print(pos)
             mask = words.ne(self.WORD.pad_index)
             mask_add = words_add.ne(self.POS.pad_index)
 
@@ -209,7 +214,6 @@ class EnsembleDependencyParser(EnsembleParser):
         ARC = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL = Field('rels', bos=bos)
         TAG = Field('pos', bos=bos)
-        #TAG = Field('pos', bos=bos, unk=unk, lower=True)
         if args.feat in ('char', 'bert'):
             origin = CoNLL(FORM=(WORD, FEAT), POS=TAG, HEAD=ARC, DEPREL=REL)
         else:
@@ -244,8 +248,17 @@ class EnsembleDependencyParser(EnsembleParser):
         addition = CoNLL(POS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
 
         train_add = Dataset(addition, args.train_add)
+
+        if args.feat in ('char', 'bert'):
+            POS.vocab = TAG.vocab
+        else:
+            POS.vocab = FEAT.vocab
+        
         POS.build(train_add)
         REL_ADD.build(train_add)
+
+        print(POS.vocab.stoi)
+        # print(FEAT.vocab.stoi)
 
         # print("add vocab")
         # print(REL_ADD.vocab.stoi)
@@ -258,7 +271,6 @@ class EnsembleDependencyParser(EnsembleParser):
                 # print(eng_rel,' ', val2)
                 if viet_rel == eng_rel:
                     mapping[val2] = val1
-    
         
         args.update({
             'n_feats_add': len(POS.vocab),

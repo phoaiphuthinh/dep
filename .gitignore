@@ -8,6 +8,9 @@ glove.6B.100d.txt
 
 __pycache__
 exp/
+exp2/
+test.txt
+tmp.txt
 .DS_Store/
 .DS_Store
 

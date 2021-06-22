@@ -51,7 +51,7 @@ class EnsembleModel(nn.Module):
         self.word_embed = nn.Embedding(num_embeddings=n_words,
                                        embedding_dim=n_embed)
 
-        #print(n_words, n_feats_add)
+        
 
         self.origin = BiaffineDependencyModel(  n_words=n_words,
                                                 n_feats=n_feats,
@@ -111,6 +111,13 @@ class EnsembleModel(nn.Module):
             #a_arc: [bucket_size, seq_len, seq_len]
         
             self.modifyScore_3(adds, a_arc, a_rel, pos, s_arc, s_rel)
+            #print(s_arc.shape)
+
+            # s_arc = self.softmax_1(s_arc)
+            # s_rel = self.softmax_1(s_rel)
+
+            # a_arc = self.softmax_1(a_arc)
+            # a_rel = self.softmax_1(a_rel)
             
             return s_arc, s_rel, a_arc, a_rel
 
@@ -143,7 +150,7 @@ class EnsembleModel(nn.Module):
                 The training loss.
         """
         if mask_add is not None:
-            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) * self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self.alpha
+            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) * self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add)
 
         return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
 
@@ -294,5 +301,7 @@ class EnsembleModel(nn.Module):
         for it in range(n_pos * n_pos):
             mask = _pos == it
             s_arc[mask] += score_arc[it] * self.alpha
+        
+        
         
         
