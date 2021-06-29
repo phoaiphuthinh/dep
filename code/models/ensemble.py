@@ -90,9 +90,6 @@ class EnsembleModel(nn.Module):
         self.unk_index = unk_index
         self.alpha = alpha
         self.n_rels_add = n_rels
-        self.softmax_arc = nn.Softmax(dim=1)
-        self.softmax_rel = nn.Softmax(dim=3)
-        #self.redirect
 
 
     def load_pretrained(self, embed=None):
@@ -108,22 +105,14 @@ class EnsembleModel(nn.Module):
         s_arc, s_rel = self.origin(words, feats)
         if adds is not None:
             a_arc, a_rel = self.addition(adds)
-            #a_arc: [bucket_size, seq_len, seq_len]
         
-            self.modifyScore_3(adds, a_arc, a_rel, pos, s_arc, s_rel)
-            #print(s_arc.shape)
+            self.modifyScore(adds, a_arc, pos, s_arc)
 
-            # s_arc = self.softmax_1(s_arc)
-            # s_rel = self.softmax_1(s_rel)
-
-            # a_arc = self.softmax_1(a_arc)
-            # a_rel = self.softmax_1(a_rel)
-            
             return s_arc, s_rel, a_arc, a_rel
 
         a_arc, a_rel = self.addition(pos)
     
-        self.modifyScore_3(pos, a_arc, a_rel, pos, s_arc, s_rel)
+        self.modifyScore(pos, a_arc, pos, s_arc)
 
             
         return s_arc, s_rel
@@ -184,104 +173,18 @@ class EnsembleModel(nn.Module):
 
         return arc_preds, rel_preds
 
-    # def modifyscore(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
 
-    #     score_arc = {}
-    #     score_rel = {}
-
-    #     bucket_size, seq_len = adds.shape
-
-    #     for i, buck in enumerate(a_arc):
-    #         sen = adds[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 tup = (sen[p1], sen[p2])
-    #                 score_arc[tup] = score_arc.get(tup, 0) + buck[p1][p2]
-            
-    #     for i, buck in enumerate(a_rel):
-    #         sen = adds[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 for r in range(self.n_rels_add):
-    #                     tup = (sen[p1], sen[p2], r)
-    #                     score_rel[tup] = score_rel.get(tup, 0) + buck[p1][p2][r]
-
-
-    #     bucket_size, seq_len = pos.shape
-
-    #     for i in range(len(s_arc)):
-    #         sen = pos[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 tup = (sen[p1], sen[p2])
-    #                 s_arc[i][p1][p2] += score_arc.get(tup, 0) * self.alpha
-
-    #     for i in range(len(s_rel)):
-    #         sen = pos[i]
-    #         for p1 in range(seq_len):
-    #             for p2 in range(seq_len):
-    #                 for r in range(self.n_rels_add):
-    #                     tup = (sen[p1], sen[p2], r)
-    #                     s_rel[i][p1][p2][r] += score_rel.get(tup, 0) * self.alpha
-
-    def modifyScore_2(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
-        n_pos = self.args.n_pos
-        score_arc = torch.zeros([n_pos, n_pos], dtype=torch.float32).to(self.args.device)
-        mapping = self.args.mapping
-
-        batch_size, seq_len = adds.shape
-
-        for b, _a_arc in enumerate(a_arc):
-            for p1 in range(seq_len):
-                for p2 in range(seq_len):
-                    score_arc[adds[b][p1]][adds[b][p2]] = score_arc[adds[b][p1]][adds[b][p2]] + _a_arc[p1][p2]
-
-        # print(pos.shape)
-        
-        score_rel = torch.zeros([n_pos, n_pos, self.args.n_rels_add], dtype=torch.float32).to(self.args.device)
-
-
-        for b, _a_rel in enumerate(a_rel):
-            for p1 in range(seq_len):
-                for p2 in range(seq_len):
-                    score_rel[adds[b][p1]][adds[b][p2]] = _a_rel[p1][p2] + score_rel[adds[b][p1]][adds[b][p2]]
-        
-        
-        # Tmp = score_arc[pos, pos]
-        # print(Tmp.shape)
-        b, seq_len_tviet = pos.shape
-
-        tmp = torch.zeros([b, seq_len_tviet, seq_len_tviet], dtype=torch.float32).to(self.args.device)
-
-        for i in range(seq_len_tviet):
-            for j in range(seq_len_tviet):
-                tmp[:, i, j] = tmp[:, i, j] + score_arc[pos[:, i], pos[:, j]]
-
-        tmp2 = torch.zeros([b, seq_len_tviet, seq_len_tviet, self.args.n_rels], dtype=torch.float32).to(self.args.device)
-
-        for i in range(seq_len_tviet):
-            for j in range(seq_len_tviet):
-                for r in range(self.args.n_rels_add):
-                    #if mapping[r] != self.args.bos_index:
-                    if mapping[r] != 0:
-                        tmp2[:, i, j, mapping[r]] = tmp2[:, i, j, mapping[r]] + score_rel[pos[:, i], pos[:, j], mapping[r]]
-
-        return s_arc + torch.mul(tmp, self.alpha), s_rel + torch.mul(tmp2, self.alpha)
-        
-        #print(tmp.shape)
-
-        pass
-
-    def modifyScore_3(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
+    def modifyScore(self, adds, a_arc, pos, s_arc):
 
         n_pos = self.args.n_pos
         bz, sl = adds.shape
         _add = adds.unsqueeze(1) #[bz, 1, sl]
-        _add = _add.transpose(2, 1) * sl #[bz, sl, 1]
+        _add = _add.transpose(2, 1) * n_pos #[bz, sl, 1]
         _add = _add.repeat(1, 1, sl).reshape(bz, sl * sl) #[bz, sl, sl] -> [bz, sl * sl]
         _add = _add + adds.repeat(1, sl)
         _add = _add.reshape(bz, sl, sl)
 
+        assert torch.all(_add < n_pos * n_pos)
 
         score_arc = torch.zeros([n_pos * n_pos], dtype=torch.float32).to(self.args.device)
 
@@ -293,10 +196,12 @@ class EnsembleModel(nn.Module):
 
         bz, sl = pos.shape
         _pos = pos.unsqueeze(1)
-        _pos = _pos.transpose(2, 1) * sl
+        _pos = _pos.transpose(2, 1) * n_pos
         _pos = _pos.repeat(1, 1, sl).reshape(bz, sl * sl)
         _pos = _pos + pos.repeat(1, sl)
         _pos = _pos.reshape(bz, sl, sl)
+
+        assert torch.all(_pos < n_pos * n_pos)
 
         for it in range(n_pos * n_pos):
             mask = _pos == it
