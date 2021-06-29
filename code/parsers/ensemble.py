@@ -235,11 +235,6 @@ class EnsembleDependencyParser(EnsembleParser):
             'feat_pad_index': FEAT.pad_index
         })
         logger.info(f"{origin}")
-        
-        # print("tag vocab")
-        # print(REL.vocab.stoi)
-
-
 
         logger.info("Building the fields")
         POS = Field('tags', bos=bos)
@@ -256,27 +251,12 @@ class EnsembleDependencyParser(EnsembleParser):
         
         POS.build(train_add)
         REL_ADD.build(train_add)
-
-        print(POS.vocab.stoi)
-        # print(FEAT.vocab.stoi)
-
-        # print("add vocab")
-        # print(REL_ADD.vocab.stoi)
-        mapping = [0 for i in range(len(REL_ADD.vocab))]
-        for viet_rel in REL.vocab.stoi:
-            for eng_rel in REL_ADD.vocab.stoi:
-                val1 = REL.vocab[viet_rel]
-                val2 = REL_ADD.vocab[eng_rel]
-                # print(viet_rel, ' ', val1)
-                # print(eng_rel,' ', val2)
-                if viet_rel == eng_rel:
-                    mapping[val2] = val1
+        
         
         args.update({
             'n_feats_add': len(POS.vocab),
             'n_rels_add': len(REL_ADD.vocab),
             'feat_pad_index_add': POS.pad_index,
-            'mapping':mapping,
             'n_pos' : len(POS.vocab)
         })
         logger.info(f"{addition}")
