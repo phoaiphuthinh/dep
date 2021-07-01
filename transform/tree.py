@@ -16,7 +16,7 @@ class GraphSentence(object):
                 pointer.child.append(chl)
                 relation = self.sentence[7][i]
                 
-                check = True
+                '''check = True
                 
                 #Modify the positions of 's phrase
                 if self.sentence[2][i] == "\'s" and self.sentence[7][pointer.cur - 1] == 'nmod':
@@ -28,11 +28,11 @@ class GraphSentence(object):
                     par.post = [pointer] + par.post
                 
                 
-                if check:
-                    if i + 1 < pointer.cur:
-                        pointer.pre.append(chl)
-                    else:
-                        pointer.post.append(chl)
+                if check:'''
+                if i + 1 < pointer.cur:
+                    pointer.pre.append(chl)
+                else:
+                    pointer.post.append(chl)
                 
                 
                 self.build(chl)
@@ -46,8 +46,7 @@ class GraphSentence(object):
         
         for i, child in enumerate(node.pre):
             ind = child.cur - 1
-            if (self.sentence[3][ind] == 'PRON' and self.sentence[4][ind] == 'PRP$') \
-                or (node.POS == 'NOUN' and (self.sentence[7][ind] == 'amod' or self.sentence[7][ind] == 'nmod')):
+            if (self.sentence[2][ind] == 'ce' and self.sentence[7][ind] == 'det'):
                 node.post = [child] + node.post
             else:
                 s.extend(self.traverse(child))

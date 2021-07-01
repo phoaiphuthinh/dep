@@ -317,20 +317,11 @@ class EnsembleDependencyParser_CRF2o(EnsembleParser):
         POS.build(train_add)
         REL_ADD.build(train_add)
 
-        print(POS.vocab.stoi)
-        mapping = [0 for i in range(len(REL_ADD.vocab))]
-        for viet_rel in REL.vocab.stoi:
-            for eng_rel in REL_ADD.vocab.stoi:
-                val1 = REL.vocab[viet_rel]
-                val2 = REL_ADD.vocab[eng_rel]
-                if viet_rel == eng_rel:
-                    mapping[val2] = val1
         
         args.update({
             'n_feats_add': len(POS.vocab),
             'n_rels_add': len(REL_ADD.vocab),
             'feat_pad_index_add': POS.pad_index,
-            'mapping':mapping,
             'n_pos' : len(POS.vocab)
         })
         logger.info(f"{addition}")

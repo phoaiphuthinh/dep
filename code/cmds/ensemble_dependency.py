@@ -4,7 +4,6 @@ import argparse
 
 
 from code import EnsembleDependencyParser
-from code import EnsembleDependencyParser_CVT
 
 from code.cmds.cmd import parse
 
@@ -27,7 +26,7 @@ def main():
     subparser.add_argument('--dev', default='code/data/ptb/dev.conllu', help='path to dev file')
     subparser.add_argument('--test', default='code/data/ptb/test.conllu', help='path to test file')
 
-    subparser.add_argument('--embed', default='code/data/ptb/glove.6B.100d.txt', help='path to pretrained embeddings')
+    subparser.add_argument('--embed', help='path to pretrained embeddings')
     
     subparser.add_argument('--train_add', default='code/data/add/train.conllu', help='Path to train file')
 

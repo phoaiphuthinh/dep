@@ -85,16 +85,6 @@ def modifyCase(sentence):
             
             sentence.values[6][i] = grp
             sentence.values[6][par - 1] = i + 1
-            sentence.values[7][par - 1] = 'pob'
-            
-            if gpos == 'N' or gpos == 'P':
-                sentence.values[7][i] = 'nmod'
-            elif gpos == 'A':
-                sentence.values[7][i] = 'amod'
-            elif gpos == 'V':
-                sentence.values[7][i] = 'vmod'
-            else:
-                sentence.values[7][i] = 'x' #If not match at all
     return sentence
 
 def modifyC(sentence):
@@ -113,8 +103,6 @@ def modifyC(sentence):
             
             sentence.values[6][i] = grp
             sentence.values[6][par - 1] = i + 1
-            sentence.values[7][par - 1] = 'conj'
-            sentence.values[7][i] = 'coord'
     return sentence
 
 def modifyMark(sentence):
@@ -125,7 +113,7 @@ def modifyMark(sentence):
         pos = sentence.values[4][i]
         rel = sentence.values[7][i]
         
-        if rel == 'mark' and pos == 'E':
+        if rel == 'mark' and (pos == 'E' or pos == 'C'):
             par = int(sentence.values[6][i])
             grp = int(sentence.values[6][par - 1])
             
@@ -133,6 +121,4 @@ def modifyMark(sentence):
             
             sentence.values[6][i] = grp
             sentence.values[6][par - 1] = i + 1
-            sentence.values[7][par - 1] = 'pob'
-            sentence.values[7][i] = 'loc'
     return sentence

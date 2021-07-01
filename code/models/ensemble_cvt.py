@@ -169,8 +169,6 @@ class EnsembleModel_CVT(nn.Module):
         self.unk_index = unk_index
         self.alpha = alpha
         self.n_rels_add = n_rels
-        self.softmax_arc = nn.Softmax(dim=1)
-        self.softmax_rel = nn.Softmax(dim=3)
         #self.redirect
 
 
@@ -235,7 +233,7 @@ class EnsembleModel_CVT(nn.Module):
                 #a_arc = a_arc
                 #a_rel = a_rel + 0.5 * guess_rel
             
-                self.modifyScore_3(adds, a_arc, a_rel, pos, s_arc, s_rel)
+                self.modifyScore(adds, a_arc, pos, s_arc)
                 
                 return s_arc, s_rel, a_arc, a_rel
 
@@ -252,7 +250,7 @@ class EnsembleModel_CVT(nn.Module):
 
             # a_arc = a_arc * 0.5 + guess_arc
 
-            self.modifyScore_3(pos, a_arc, a_rel, pos, s_arc, s_rel)
+            self.modifyScore(pos, a_arc, pos, s_arc)
 
             return s_arc, s_rel
 
@@ -350,16 +348,17 @@ class EnsembleModel_CVT(nn.Module):
 
         return arc_preds, rel_preds
 
-    def modifyScore_3(self, adds, a_arc, a_rel, pos, s_arc, s_rel):
+    def modifyScore(self, adds, a_arc, pos, s_arc):
 
         n_pos = self.args.n_pos
         bz, sl = adds.shape
         _add = adds.unsqueeze(1) #[bz, 1, sl]
-        _add = _add.transpose(2, 1) * sl #[bz, sl, 1]
+        _add = _add.transpose(2, 1) * n_pos #[bz, sl, 1]
         _add = _add.repeat(1, 1, sl).reshape(bz, sl * sl) #[bz, sl, sl] -> [bz, sl * sl]
         _add = _add + adds.repeat(1, sl)
         _add = _add.reshape(bz, sl, sl)
 
+        assert torch.all(_add < n_pos * n_pos)
 
         score_arc = torch.zeros([n_pos * n_pos], dtype=torch.float32).to(self.args.device)
 
@@ -371,11 +370,14 @@ class EnsembleModel_CVT(nn.Module):
 
         bz, sl = pos.shape
         _pos = pos.unsqueeze(1)
-        _pos = _pos.transpose(2, 1) * sl
+        _pos = _pos.transpose(2, 1) * n_pos
         _pos = _pos.repeat(1, 1, sl).reshape(bz, sl * sl)
         _pos = _pos + pos.repeat(1, sl)
         _pos = _pos.reshape(bz, sl, sl)
 
+        assert torch.all(_pos < n_pos * n_pos)
+
         for it in range(n_pos * n_pos):
             mask = _pos == it
             s_arc[mask] += score_arc[it] * self.alpha
+        
