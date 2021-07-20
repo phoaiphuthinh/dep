@@ -7,11 +7,10 @@ from .dropout import IndependentDropout, SharedDropout
 from .lstm import LSTM
 from .mlp import MLP
 from .scalar_mix import ScalarMix
-from .convert import Convert
 from .treecrf import (CRF2oDependency, CRFConstituency, CRFDependency,
                       MatrixTree)
-from .variational_inference import (LBPSemanticDependency,
-                                    MFVISemanticDependency)
+#from .variational_inference import (LBPSemanticDependency,
+#                                    MFVISemanticDependency)
 
 __all__ = ['LSTM', 'MLP', 'BertEmbedding', 'Biaffine', 'CharLSTM',
-           'IndependentDropout', 'ScalarMix', 'SharedDropout', 'Triaffine', 'Convert']
+           'IndependentDropout', 'ScalarMix', 'SharedDropout', 'Triaffine']
