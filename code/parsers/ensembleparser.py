@@ -101,7 +101,8 @@ class EnsembleParser(object):
 
     def evaluate(self, data, buckets=8, batch_size=5000, **kwargs):
         args = self.args.update(locals())
-        init_logger(logger, verbose=args.verbose)
+        init_logger(logger, verbose=True)
+    
 
         self.origin.train()
         logger.info("Loading the data")
