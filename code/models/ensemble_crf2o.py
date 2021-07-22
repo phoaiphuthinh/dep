@@ -47,8 +47,6 @@ class EnsembleModel_CRF2o(nn.Module):
 
         self.args = Config().update(locals())
 
-        print(self.args)
-
         self.word_embed = nn.Embedding(num_embeddings=n_words,
                                        embedding_dim=n_embed)
 

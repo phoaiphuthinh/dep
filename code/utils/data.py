@@ -90,6 +90,7 @@ class Dataset(torch.utils.data.Dataset):
         self.fields = self.transform(self.sentences)
         # NOTE: the final bucket count is roughly equal to n_buckets
         self.lengths = [len(i) for i in self.fields[next(iter(self.fields))]]
+
         self.buckets = dict(zip(*kmeans(self.lengths, n_buckets)))
         self.loader = DataLoader(dataset=self,
                                  batch_sampler=Sampler(buckets=self.buckets,
@@ -141,9 +142,12 @@ class Sampler(torch.utils.data.Sampler):
         self.chunks = [min(len(bucket), max(round(size * len(bucket) / batch_size), 1))
                        for size, bucket in zip(self.sizes, self.buckets)]
 
+        
+
         self.rank = dist.get_rank() if distributed else 0
         self.replicas = dist.get_world_size() if distributed else 1
         self.samples = sum(self.chunks) // self.replicas
+
         self.epoch = 0
 
     def __iter__(self):

@@ -28,8 +28,9 @@ def main():
     subparser.add_argument('--train', default='code/data/ptb/train.conllu', help='path to train file')
     subparser.add_argument('--dev', default='code/data/ptb/dev.conllu', help='path to dev file')
     subparser.add_argument('--test', default='code/data/ptb/test.conllu', help='path to test file')
+    subparser.add_argument('--use_cpos', action='store_true')
 
-    subparser.add_argument('--embed', default='code/data/ptb/glove.6B.100d.txt', help='path to pretrained embeddings')
+    subparser.add_argument('--embed', help='path to pretrained embeddings')
     
     subparser.add_argument('--train_add', default='code/data/add/train.conllu', help='Path to train file')
 

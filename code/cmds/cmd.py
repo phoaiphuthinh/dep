@@ -15,6 +15,8 @@ def parse(parser):
     parser.add_argument('--batch-size', default=5000, type=int, help='batch size')
     parser.add_argument('--local_rank', default=-1, type=int, help='node rank for distributed training')
     parser.add_argument('--epochs', default=5000, type=int, help='epochs')
+    
+    parser.add_argument('--tag_set_path', default='', help='path to tag set if available')
     args, unknown = parser.parse_known_args()
     args, _ = parser.parse_known_args(unknown, args)
     args = Config(**vars(args))
