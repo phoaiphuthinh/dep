@@ -3,7 +3,7 @@ import torch.nn as nn
 from code.modules import (LSTM, MLP, BertEmbedding, Biaffine, CharLSTM,
                            Triaffine)
 from code.modules.dropout import IndependentDropout, SharedDropout
-from code.modules import Convert
+#from code.modules import Convert
 from code.utils import Config
 from code.utils.alg import eisner, eisner2o, mst
 from code.utils.transform import CoNLL
@@ -46,8 +46,6 @@ class EnsembleModel_CRF2o(nn.Module):
         super().__init__()
 
         self.args = Config().update(locals())
-
-        print(self.args)
 
         self.word_embed = nn.Embedding(num_embeddings=n_words,
                                        embedding_dim=n_embed)
@@ -141,7 +139,7 @@ class EnsembleModel_CRF2o(nn.Module):
         """
         if mask_add is not None:
             loss_org, arc_probs = self.origin.loss(s_arc, s_sib, s_rel, arcs, sibs, rels, mask, mbr, partial)
-            return loss_org * self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add, partial), arc_probs
+            return loss_org + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add, partial), arc_probs
 
         return self.origin.loss(s_arc, s_sib, s_rel, arcs, sibs, rels, mask, mbr, partial)
 
