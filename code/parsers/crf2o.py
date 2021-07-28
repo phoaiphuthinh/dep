@@ -29,12 +29,16 @@ class EnsembleDependencyParser_CRF2o(EnsembleParser):
             self.WORD, self.FEAT = self.origin.FORM
         else:
             self.WORD, self.FEAT = self.origin.FORM, self.origin.POS
+            if args.use_cpos:
+                self.WORD, self.FEAT = self.origin.FORM, self.origin.CPOS
         self.ARC, self.REL = self.origin.HEAD, self.origin.DEPREL
         self.puncts = torch.tensor([i
                                     for s, i in self.WORD.vocab.stoi.items()
                                     if ispunct(s)]).to(self.args.device)
 
         self.POS = self.addition.POS
+        if self. args.use_cpos:
+            self.POS = self.addition.CPOS
         self.ARC_ADD, self.REL_ADD = self.addition.HEAD, self.addition.DEPREL
 
 
@@ -223,6 +227,17 @@ class EnsembleDependencyParser_CRF2o(EnsembleParser):
         return preds
 
     @classmethod
+    def getTagSet(cls, f_name, bos):
+        if os.path.isfile(f_name):
+            with open(f_name, 'r') as f:
+                data = f.read()
+                tag_set = re.split('\n|\r\n|\r', data)
+                c = Counter(tag_set)
+                vocab = Vocab(c, 1, [bos], None)
+                return vocab
+        return None
+
+    @classmethod
     def build(cls, path,
               optimizer_args={'lr': 2e-3, 'betas': (.9, .9), 'eps': 1e-12},
               scheduler_args={'gamma': .75**(1/5000)},
@@ -280,9 +295,20 @@ class EnsembleDependencyParser_CRF2o(EnsembleParser):
         REL = Field('rels', bos=bos)
         TAG = Field('pos', bos=bos)
         if args.feat in ('char', 'bert'):
-            origin = CoNLL(FORM=(WORD, FEAT), POS=TAG, HEAD=(ARC, SIB), DEPREL=REL)
+            if args.use_cpos:
+                origin = CoNLL(FORM=(WORD, FEAT), CPOS=TAG, HEAD=(ARC, SIB), DEPREL=REL)
+            else:
+                origin = CoNLL(FORM=(WORD, FEAT), POS=TAG, HEAD=(ARC, SIB), DEPREL=REL)
         else:
-            origin = CoNLL(FORM=WORD, POS=FEAT, HEAD=(ARC, SIB), DEPREL=REL)
+            if args.use_cpos:
+                origin = CoNLL(FORM=WORD, CPOS=FEAT, HEAD=(ARC, SIB), DEPREL=REL)
+            else:
+                origin = CoNLL(FORM=WORD, POS=FEAT, HEAD=(ARC, SIB), DEPREL=REL)
+
+        tag_set = EnsembleDependencyParser_CRF2o.getTagSet(args.tag_set_path, bos)
+        if tag_set != None:
+            TAG.vocab = tag_set
+
 
         train = Dataset(origin, args.train)
         WORD.build(train, args.min_freq, (Embedding.load(args.embed, args.unk) if args.embed else None))
@@ -305,18 +331,29 @@ class EnsembleDependencyParser_CRF2o(EnsembleParser):
         POS = Field('tags', bos=bos)
         ARC_ADD = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL_ADD = Field('rels', bos=bos)
-        addition = CoNLL(POS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
+
+        if args.use_cpos:
+            addition = CoNLL(CPOS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
+        else:
+            addition = CoNLL(POS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
 
         train_add = Dataset(addition, args.train_add)
 
-        if args.feat in ('char', 'bert'):
-            POS.vocab = TAG.vocab
-        else:
-            POS.vocab = FEAT.vocab
-        
+        if not args.use_cpos:
+            if args.feat in ('char', 'bert'):
+                POS.vocab = TAG.vocab
+            else:
+                POS.vocab = FEAT.vocab
+
+        if tag_set != None:
+            POS.vocab = tag_set
+
+        # for (k, v) in POS.vocab.stoi.items():
+        #     print(k, v)
+
         POS.build(train_add)
         REL_ADD.build(train_add)
-
+        
         
         args.update({
             'n_feats_add': len(POS.vocab),

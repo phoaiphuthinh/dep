@@ -10,6 +10,8 @@ __pycache__
 exp/
 exp2/
 test.txt
+test2.txt
+test*.txt
 tmp.txt
 .DS_Store/
 .DS_Store

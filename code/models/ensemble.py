@@ -3,7 +3,7 @@ import torch.nn as nn
 from code.modules import (LSTM, MLP, BertEmbedding, Biaffine, CharLSTM,
                            Triaffine)
 from code.modules.dropout import IndependentDropout, SharedDropout
-from code.modules import Convert
+#from code.modules import Convert
 from code.utils import Config
 from code.utils.alg import eisner, eisner2o, mst
 from code.utils.transform import CoNLL
@@ -45,8 +45,6 @@ class EnsembleModel(nn.Module):
         super().__init__()
 
         self.args = Config().update(locals())
-
-        print(self.args)
 
         self.word_embed = nn.Embedding(num_embeddings=n_words,
                                        embedding_dim=n_embed)
@@ -93,10 +91,6 @@ class EnsembleModel(nn.Module):
 
 
     def load_pretrained(self, embed=None):
-        if embed is not None:
-            self.pretrained = nn.Embedding.from_pretrained(embed)
-            # nn.init.zeros_(self.word_embed.weight)
-            nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
     
 
@@ -104,6 +98,9 @@ class EnsembleModel(nn.Module):
 
         s_arc, s_rel = self.origin(words, feats)
         if adds is not None:
+            
+            # print('adds ', adds)
+
             a_arc, a_rel = self.addition(adds)
         
             self.modifyScore(adds, a_arc, pos, s_arc)

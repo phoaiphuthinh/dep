@@ -1,18 +1,15 @@
 #! /bin/bash
 
-python3.7 -m code.cmds.ensemble_crf2o train --feat char -d 0 \
--b \
---mbr \
---train "code/data/ptb/train.conllu" \
---dev "code/data/ptb/dev.conllu" \
---test "code/data/ptb/test.conllu" \
---buckets 32 \
---train_add "code/data/add/train.conllu" \
---n-embed 100 \
---embed "./glove.6B.100d.txt" \
+python3.7 -m code.cmds.ensemble_crf2o train -b -d 0  \
+-c config.ini  \
+-p "exp2/add_ptb_train" \
+-f bert \
 --bert "vinai/phobert-base" \
---path "exp2/crf_ensemble_test" \
---batch-size 1000 \
 --epochs 1000 \
---seed 1 \
---conf "./code/config.ini" \
+--train "code/data/add_ptb/vi_train.conllx" \
+--dev "code/data/add_ptb/vi_dev.conllx" \
+--test "code/data/add_ptb/vi_test.conllx" \
+--train_add "code/data/add_ptb/en_full.conllx" \
+--batch-size 5000 \
+--mbr \
+--use_cpos

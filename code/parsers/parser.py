@@ -32,7 +32,11 @@ class Parser(object):
 
         self.transform.train()
         if dist.is_initialized():
+            #print('world size ', dist.get_world_size())
             args.batch_size = args.batch_size // dist.get_world_size()
+
+        #print('batch size ', args.batch_size)
+
         logger.info("Loading the data")
         train = Dataset(self.transform, args.train, **args)
         dev = Dataset(self.transform, args.dev)
