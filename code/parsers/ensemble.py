@@ -1,3 +1,4 @@
+from torch.serialization import load
 from code.parsers.ensembleparser import EnsembleParser
 import os
 
@@ -113,8 +114,12 @@ class EnsembleDependencyParser(EnsembleParser):
         self.model.eval()
 
         total_loss, metric = 0, AttachmentMetric()
-
-        for words, feats, pos, arcs, rels in loader:
+        for it in loader:
+            if self.args.feat in ('char', 'bert'):
+                words, feats, pos, arcs, rels = it
+            else:
+                words, feats, arcs, rels = it
+                pos = feats
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
