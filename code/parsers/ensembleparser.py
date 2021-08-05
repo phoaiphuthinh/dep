@@ -112,7 +112,7 @@ class EnsembleParser(object):
 
         logger.info("Evaluating the dataset")
         start = datetime.now()
-        loss, metric = self._evaluate(dataset.loader)
+        loss, metric = self._evaluate_print(dataset.loader)
         elapsed = datetime.now() - start
         logger.info(f"loss: {loss:.4f} - {metric}")
         logger.info(f"{elapsed}s elapsed, {len(dataset)/elapsed.total_seconds():.2f} Sents/s")
@@ -151,6 +151,10 @@ class EnsembleParser(object):
 
     @torch.no_grad()
     def _evaluate(self, loader):
+        raise NotImplementedError
+    
+    @torch.no_grad()
+    def _evaluate_print(self, loader):
         raise NotImplementedError
 
     @torch.no_grad()

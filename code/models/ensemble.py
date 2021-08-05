@@ -87,7 +87,7 @@ class EnsembleModel(nn.Module):
         self.pad_index = pad_index
         self.unk_index = unk_index
         self.alpha = alpha
-        self.n_rels_add = n_rels
+        self.n_rels = n_rels
 
 
     def load_pretrained(self, embed=None):
@@ -104,12 +104,14 @@ class EnsembleModel(nn.Module):
             a_arc, a_rel = self.addition(adds)
         
             self.modifyScore(adds, a_arc, pos, s_arc)
+            self.modifyLabel(adds, a_rel, pos, s_rel)
 
             return s_arc, s_rel, a_arc, a_rel
 
         a_arc, a_rel = self.addition(pos)
     
         self.modifyScore(pos, a_arc, pos, s_arc)
+        self.modifyLabel(pos, a_rel, pos, s_rel)
 
             
         return s_arc, s_rel
@@ -184,12 +186,51 @@ class EnsembleModel(nn.Module):
         assert torch.all(_add < n_pos * n_pos)
 
         score_arc = torch.zeros([n_pos * n_pos], dtype=torch.float32).to(self.args.device)
+        
 
         for it in range(n_pos * n_pos):
-            mask = _add == it
-            score_arc[it] = a_arc[mask].sum()
+            mask = (_add == it) & (~torch.isinf(a_arc))
+            score_arc[it] = a_arc[mask].sum() # / mask.sum() -> get average 
 
         score_arc = torch.sigmoid(score_arc)
+        # score_arc = torch.nn.functional.softmax(score_arc, dim = 0) -> apply softmax 
+
+        bz, sl = pos.shape
+        _pos = pos.unsqueeze(1)
+        _pos = _pos.transpose(2, 1) * n_pos
+        _pos = _pos.repeat(1, 1, sl).reshape(bz, sl * sl)
+        _pos = _pos + pos.repeat(1, sl)
+        _pos = _pos.reshape(bz, sl, sl)
+
+        assert torch.all(_pos < n_pos * n_pos)        
+
+        for it in range(n_pos * n_pos):
+            mask = (_pos == it) & (~torch.isinf(s_arc))
+            _offset = s_arc[mask] * score_arc[it]
+            s_arc[mask] += _offset * self.alpha
+
+    def modifyLabel(self, adds, a_rel, pos, s_rel):
+
+        n_pos = self.args.n_pos
+        bz, sl = adds.shape
+        _add = adds.unsqueeze(1) #[bz, 1, sl]
+        _add = _add.transpose(2, 1) * n_pos #[bz, sl, 1]
+        _add = _add.repeat(1, 1, sl).reshape(bz, sl * sl) #[bz, sl, sl] -> [bz, sl * sl]
+        _add = _add + adds.repeat(1, sl)
+        _add = _add.reshape(bz, sl, sl)
+
+        assert torch.all(_add < n_pos * n_pos)
+
+        score_rel = torch.zeros([n_pos * n_pos, self.n_rels], dtype=torch.float32).to(self.args.device)
+
+        
+        for it in range(n_pos * n_pos):
+            mask = _add == it
+
+            score_rel[it, :] = a_rel[mask, :].sum(axis=0) # / mask.sum() -> average
+
+        score_rel = torch.sigmoid(score_rel) # -> sigmoid
+        # score_rel = torch.nn.functional.softmax(score_rel, dim = 1) -> apply softmax
 
         bz, sl = pos.shape
         _pos = pos.unsqueeze(1)
@@ -200,9 +241,11 @@ class EnsembleModel(nn.Module):
 
         assert torch.all(_pos < n_pos * n_pos)
 
+        
         for it in range(n_pos * n_pos):
             mask = _pos == it
-            s_arc[mask] += score_arc[it] * self.alpha
+            _offset = s_rel[mask, :] * score_rel[it, :]
+            s_rel[mask, :] += _offset * self.alpha
         
         
         

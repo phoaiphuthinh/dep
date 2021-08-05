@@ -41,7 +41,7 @@ class EnsembleDependencyParser(EnsembleParser):
                                     if ispunct(s)]).to(self.args.device)
 
         self.POS = self.addition.POS
-        if self. args.use_cpos:
+        if self.args.use_cpos:
             self.POS = self.addition.CPOS
         self.ARC_ADD, self.REL_ADD = self.addition.HEAD, self.addition.DEPREL
 
@@ -140,6 +140,54 @@ class EnsembleDependencyParser(EnsembleParser):
                 mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
             total_loss += loss.item()
             metric(arc_preds, rel_preds, arcs, rels, mask)
+        total_loss /= len(loader)
+
+        return total_loss, metric
+
+    @torch.no_grad()
+    def _evaluate_print(self, loader):
+        self.model.eval()
+
+        file = self.args.log_file
+        f = open(file, 'w')
+        
+        total_loss, metric = 0, AttachmentMetric()
+        for it in loader:
+            if self.args.feat in ('char', 'bert'):
+                words, feats, pos, arcs, rels = it
+            else:
+                words, feats, arcs, rels = it
+                pos = feats
+            mask = words.ne(self.WORD.pad_index)
+            # ignore the first token of each sentence
+            mask[:, 0] = 0
+            s_arc, s_rel = self.model(words, feats, pos=pos)
+            loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, self.args.partial)
+            arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask, self.args.tree, self.args.proj)
+            if self.args.partial:
+                mask &= arcs.ge(0)
+            # ignore all punctuation if not specified
+            if not self.args.punct:
+                mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+            total_loss += loss.item()
+            metric(arc_preds, rel_preds, arcs, rels, mask)
+
+            bz, sl = mask.shape
+            #For each sentence -> print the accuracy
+            for _ in range(bz):
+                arc_prd, rel_prd = arc_preds[_, :], rel_preds[_, :]
+                arc_gold, rel_gold = arcs[_, :], rels[_, :]
+                _mask = mask[_, :]
+                arc_mask = arc_prd.eq(arc_gold) & _mask
+                rel_mask = rel_prd.eq(rel_gold) & arc_mask
+                arc_mask_seq, rel_mask_seq = arc_mask[_mask], rel_mask[_mask]
+                total = len(arc_mask_seq)
+                correct_arcs = arc_mask_seq.sum().item()
+                correct_rels = rel_mask_seq.sum().item()
+                uas = correct_arcs / (total + 1e-12)
+                las = correct_rels / (total + 1e-12)
+                f.write(f"UAS: {uas:6.2%} LAS: {las:6.2%} sentence_length: {total}\n")
+        f.close()
         total_loss /= len(loader)
 
         return total_loss, metric
@@ -287,6 +335,8 @@ class EnsembleDependencyParser(EnsembleParser):
                 POS.vocab = TAG.vocab
             else:
                 POS.vocab = FEAT.vocab
+
+        REL_ADD.vocab = REL.vocab
 
         if tag_set != None:
             POS.vocab = tag_set
