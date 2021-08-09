@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 from code.modules.transformer.layer import EncoderLayer
 
-class Encoder(nn.Module):
+class TransformerEncoder(nn.Module):
     r"""
         d_word_vec: int -> size of embedded sequence
         n_layers: int -> number of layer
@@ -13,8 +13,8 @@ class Encoder(nn.Module):
 
     """
     def __init__(
-            self, d_word_vec, n_layers, n_head, d_k=64, d_v=64,
-            d_model=512, d_inner=2048, pad_idx=0, scale_emb=False, dropout=0.1):
+            self, d_word_vec, n_layers=6, n_head=8, d_k=64, d_v=64,
+            d_model=512, d_inner=2048, scale_emb=False, dropout=0.1):
 
         super().__init__()
 
@@ -30,6 +30,9 @@ class Encoder(nn.Module):
         r"""
             embed_seq: tensor[batch, n_seq, d_word_vec]
         """
+
+        # print(embedded_seq.shape)
+        # print(src_mask.shape)
 
         enc_slf_attn_list = []
 
