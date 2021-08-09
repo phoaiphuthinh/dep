@@ -9,6 +9,7 @@ from code.utils import Config
 from code.utils.alg import eisner, eisner2o, mst
 from code.utils.transform import CoNLL
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from code.modules import TransformerEncoder
 
 
 class BiaffineDependencyModel(nn.Module):
@@ -96,6 +97,13 @@ class BiaffineDependencyModel(nn.Module):
                  feat_pad_index=0,
                  pad_index=0,
                  unk_index=1,
+                 transformer_n_layers=1,
+                 transformer_n_head=8,
+                 transformer_d_k=64,   
+                 transformer_d_v=64,
+                 transformer_d_inner=2048,
+                 transformer_scale_embed=False,
+                 transformer_dropout=0.1,   
                  **kwargs):
         super().__init__()
 
@@ -122,6 +130,18 @@ class BiaffineDependencyModel(nn.Module):
             raise RuntimeError("The feat type should be in ['char', 'bert', 'tag'].")
         self.embed_dropout = IndependentDropout(p=embed_dropout)
 
+        self.transformer_encoder = TransformerEncoder(d_word_vec=n_embed + n_feat_embed,
+                                                      n_layers=transformer_n_layers,
+                                                      n_head=transformer_n_head,
+                                                      d_k=transformer_d_k,   
+                                                      d_v=transformer_d_v,
+                                                      d_model=n_embed + n_feat_embed,
+                                                      d_inner=transformer_d_inner,
+                                                      scale_emb=False,
+                                                      dropout=0.1)
+
+        
+
         # the lstm layer
         self.lstm = LSTM(input_size=n_embed + n_feat_embed,
                          hidden_size=n_lstm_hidden,
@@ -130,11 +150,14 @@ class BiaffineDependencyModel(nn.Module):
                          dropout=lstm_dropout)
         self.lstm_dropout = SharedDropout(p=lstm_dropout)
 
+
+        self.encoder_n_out = n_embed + n_feat_embed
+        #self.encoder_n_out = n_lstm_hidden*2
         # the MLP layers
-        self.mlp_arc_d = MLP(n_in=n_lstm_hidden*2, n_out=n_mlp_arc, dropout=mlp_dropout)
-        self.mlp_arc_h = MLP(n_in=n_lstm_hidden*2, n_out=n_mlp_arc, dropout=mlp_dropout)
-        self.mlp_rel_d = MLP(n_in=n_lstm_hidden*2, n_out=n_mlp_rel, dropout=mlp_dropout)
-        self.mlp_rel_h = MLP(n_in=n_lstm_hidden*2, n_out=n_mlp_rel, dropout=mlp_dropout)
+        self.mlp_arc_d = MLP(n_in=self.encoder_n_out, n_out=n_mlp_arc, dropout=mlp_dropout)
+        self.mlp_arc_h = MLP(n_in=self.encoder_n_out, n_out=n_mlp_arc, dropout=mlp_dropout)
+        self.mlp_rel_d = MLP(n_in=self.encoder_n_out, n_out=n_mlp_rel, dropout=mlp_dropout)
+        self.mlp_rel_h = MLP(n_in=self.encoder_n_out, n_out=n_mlp_rel, dropout=mlp_dropout)
 
         # the Biaffine layers
         self.arc_attn = Biaffine(n_in=n_mlp_arc, bias_x=True, bias_y=False)
@@ -186,10 +209,16 @@ class BiaffineDependencyModel(nn.Module):
         # concatenate the word and feat representations
         embed = torch.cat((word_embed, feat_embed), -1)
 
-        x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
-        x, _ = self.lstm(x)
-        x, _ = pad_packed_sequence(x, True, total_length=seq_len)
-        x = self.lstm_dropout(x)
+
+        #bilstm
+        # x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
+        # x, _ = self.lstm(x)
+        # x, _ = pad_packed_sequence(x, True, total_length=seq_len)
+        # x = self.lstm_dropout(x)
+        src_mask = mask.unsqueeze(1)
+
+        x = self.transformer_encoder(embed, src_mask)
+        x = x[0]
 
         # apply MLPs to the BiLSTM output states
         arc_d = self.mlp_arc_d(x)
