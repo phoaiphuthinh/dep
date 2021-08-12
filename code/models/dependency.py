@@ -97,7 +97,7 @@ class BiaffineDependencyModel(nn.Module):
                  feat_pad_index=0,
                  pad_index=0,
                  unk_index=1,
-                 transformer_n_layers=1,
+                 transformer_n_layers=3,
                  transformer_n_head=8,
                  transformer_d_k=64,   
                  transformer_d_v=64,

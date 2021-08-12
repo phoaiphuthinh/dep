@@ -198,12 +198,18 @@ class EnsembleDependencyParser(EnsembleParser):
 
         preds = {}
         arcs, rels, probs = [], [], []
-        for words, feats in progress_bar(loader):
+        full_probs = []
+        for it in loader:
+            if self.args.feat in ('char', 'bert'):
+                words, feats, pos = it
+            else:
+                words, feats = it
+                pos = feats
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
             lens = mask.sum(1).tolist()
-            s_arc, s_rel = self.model(words, feats)
+            s_arc, s_rel = self.model(words, feats, pos=pos)
             arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask, self.args.tree, self.args.proj)
             arcs.extend(arc_preds[mask].split(lens))
             rels.extend(rel_preds[mask].split(lens))

@@ -2,7 +2,7 @@
 
 python3.7 -m code.cmds.ensemble_dependency train -b -d 0  \
 -c config.ini  \
--p "exp3/test_trans_encode" \
+-p "exp3/test_trans_encode_bilstm" \
 -f bert \
 --bert "vinai/phobert-base" \
 --epochs 1000 \
@@ -15,7 +15,6 @@ python3.7 -m code.cmds.ensemble_dependency train -b -d 0  \
 --use_cpos
 
 # python3.7 -m code.cmds.ensemble_dependency evaluate \
-# --data "./code/data/ptb/dev.conllu" \
-# -p "./exp2/normal_2_thread_nobert" \
-# -c config.ini \
+# --data "code/data/add_ptb/vi_dev.conllx" \
+# -p "./exp3/test_trans_encode" \
 # -d 0

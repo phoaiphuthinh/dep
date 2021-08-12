@@ -9,6 +9,7 @@ glove.6B.100d.txt
 __pycache__
 exp/
 exp2/
+exp*/
 test.txt
 test2.txt
 test*.txt

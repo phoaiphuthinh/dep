@@ -141,7 +141,7 @@ class EnsembleParser(object):
             setattr(dataset, name, value)
         if pred is not None and is_master():
             logger.info(f"Saving predicted results to {pred}")
-            self.origin.save(pred, dataset.sentences)
+            self.origin.save(pred, dataset)
         logger.info(f"{elapsed}s elapsed, {len(dataset) / elapsed.total_seconds():.2f} Sents/s")
 
         return dataset
