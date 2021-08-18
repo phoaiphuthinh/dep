@@ -10,7 +10,7 @@ from code.models import (EnsembleModel)
 from code.parsers.parser import Parser
 from code.utils import Config, Dataset, Embedding
 from code.utils.common import bos, pad, unk
-from code.utils.field import Field, SubwordField
+from code.utils.field import RawField, Field, SubwordField
 from code.utils.vocab import Vocab
 from code.utils.fn import ispunct
 from code.utils.logging import get_logger, progress_bar
@@ -29,16 +29,23 @@ class EnsembleDependencyParser(EnsembleParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        if self.args.feat in ('char', 'bert'):
-            self.WORD, self.FEAT = self.origin.FORM
+
+        if self.args.encoder != 'bert':
+            if self.args.feat in ('char', 'bert'):
+                self.WORD, self.TEXT, self.FEAT = self.origin.FORM
+            else:
+                self.WORD, self.TEXT = self.origin.FORM
+                self.FEAT = self.origin.POS
+                if args.use_cpos:
+                    self.WORD, self.TEXT = self.origin.FORM
+                    self.FEAT = self.origin.CPOS
+
         else:
-            self.WORD, self.FEAT = self.origin.FORM, self.origin.POS
-            if args.use_cpos:
-                self.WORD, self.FEAT = self.origin.FORM, self.origin.CPOS
+            self.WORD, self.TEXT = self.origin.FORM
         self.ARC, self.REL = self.origin.HEAD, self.origin.DEPREL
-        self.puncts = torch.tensor([i
-                                    for s, i in self.WORD.vocab.stoi.items()
-                                    if ispunct(s)]).to(self.args.device)
+            # self.puncts = torch.tensor([i
+            #                             for s, i in self.WORD.vocab.stoi.items()
+            #                             if ispunct(s)]).to(self.args.device)
 
         self.POS = self.addition.POS
         if self.args.use_cpos:
@@ -79,11 +86,15 @@ class EnsembleDependencyParser(EnsembleParser):
         bar_add = iter(loader_add)
         
         for it in bar:
-            if self.args.feat in ('char', 'bert'):
-                words, feats, pos, arcs, rels = it
+            if self.args.encoder != 'bert':
+                if self.args.feat in ('char', 'bert'):
+                    words, texts, feats, pos, arcs, rels = it
+                else:
+                    words, texts, feats, arcs, rels = it
+                    pos = feats
             else:
-                words, feats, arcs, rels = it
-                pos = feats
+                words, texts, pos, arcs, rels = it
+                feats = None
             self.optimizer.zero_grad()
             it_nx = next(bar_add, None)
             if (it_nx is None):
@@ -111,8 +122,12 @@ class EnsembleDependencyParser(EnsembleParser):
             if self.args.partial:
                 mask &= arcs.ge(0)
             # ignore all punctuation if not specified
+            # if not self.args.punct:
+            #     mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+
             if not self.args.punct:
-                mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+                mask.masked_scatter_(mask, ~mask.new_tensor([ispunct(w) for s in texts for w in s]))
+
             metric(arc_preds, rel_preds, arcs, rels, mask)
             bar.set_postfix_str(f"lr: {self.scheduler.get_last_lr()[0]:.4e} - loss: {loss:.4f} - {metric}")
 
@@ -122,11 +137,15 @@ class EnsembleDependencyParser(EnsembleParser):
 
         total_loss, metric = 0, AttachmentMetric()
         for it in loader:
-            if self.args.feat in ('char', 'bert'):
-                words, feats, pos, arcs, rels = it
+            if self.args.encoder != 'bert':
+                if self.args.feat in ('char', 'bert'):
+                    words, texts, feats, pos, arcs, rels = it
+                else:
+                    words, texts, feats, arcs, rels = it
+                    pos = feats
             else:
-                words, feats, arcs, rels = it
-                pos = feats
+                words, texts, pos, arcs, rels = it
+                feats = None
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
@@ -136,8 +155,10 @@ class EnsembleDependencyParser(EnsembleParser):
             if self.args.partial:
                 mask &= arcs.ge(0)
             # ignore all punctuation if not specified
+
             if not self.args.punct:
-                mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+                mask.masked_scatter_(mask, ~mask.new_tensor([ispunct(w) for s in texts for w in s]))
+
             total_loss += loss.item()
             metric(arc_preds, rel_preds, arcs, rels, mask)
         total_loss /= len(loader)
@@ -153,11 +174,15 @@ class EnsembleDependencyParser(EnsembleParser):
         
         total_loss, metric = 0, AttachmentMetric()
         for it in loader:
-            if self.args.feat in ('char', 'bert'):
-                words, feats, pos, arcs, rels = it
+            if self.args.encoder != 'bert':
+                if self.args.feat in ('char', 'bert'):
+                    words, texts, feats, pos, arcs, rels = it
+                else:
+                    words, texts, feats, arcs, rels = it
+                    pos = feats
             else:
-                words, feats, arcs, rels = it
-                pos = feats
+                words, texts, pos, arcs, rels = it
+                feats = None
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
@@ -166,9 +191,14 @@ class EnsembleDependencyParser(EnsembleParser):
             arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask, self.args.tree, self.args.proj)
             if self.args.partial:
                 mask &= arcs.ge(0)
+
             # ignore all punctuation if not specified
+            # if not self.args.punct:
+            #     mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+
             if not self.args.punct:
-                mask &= words.unsqueeze(-1).ne(self.puncts).all(-1)
+                mask.masked_scatter_(mask, ~mask.new_tensor([ispunct(w) for s in texts for w in s]))
+
             total_loss += loss.item()
             metric(arc_preds, rel_preds, arcs, rels, mask)
 
@@ -200,11 +230,15 @@ class EnsembleDependencyParser(EnsembleParser):
         arcs, rels, probs = [], [], []
         full_probs = []
         for it in loader:
-            if self.args.feat in ('char', 'bert'):
-                words, feats, pos = it
+            if self.args.encoder != 'bert':
+                if self.args.feat in ('char', 'bert'):
+                    words, texts, feats, pos, arcs, rels = it
+                else:
+                    words, texts, feats, arcs, rels = it
+                    pos = feats
             else:
-                words, feats = it
-                pos = feats
+                words, texts, pos, arcs, rels = it
+                feats = None
             mask = words.ne(self.WORD.pad_index)
             # ignore the first token of each sentence
             mask[:, 0] = 0
@@ -273,48 +307,70 @@ class EnsembleDependencyParser(EnsembleParser):
             return parser
 
         logger.info("Building the fields")
-        WORD = Field('words', pad=pad, unk=unk, bos=bos, lower=True)
-        if args.feat == 'char':
-            FEAT = SubwordField('chars', pad=pad, unk=unk, bos=bos, fix_len=args.fix_len)
-        elif args.feat == 'bert':
+
+        FEAT = None
+        TAG = None
+
+        if args.encoder == 'bert':
             from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained(args.bert)
-            FEAT = SubwordField('bert',
+            WORD = SubwordField('words',
                                 pad=tokenizer.pad_token,
                                 unk=tokenizer.unk_token,
                                 bos=tokenizer.bos_token or tokenizer.cls_token,
                                 fix_len=args.fix_len,
                                 tokenize=tokenizer.tokenize)
-            FEAT.vocab = tokenizer.get_vocab()
+            WORD.vocab = tokenizer.get_vocab()
+
         else:
-            FEAT = Field('tags', bos=bos)
+
+            WORD = Field('words', pad=pad, unk=unk, bos=bos, lower=True)
+            if args.feat == 'char':
+                FEAT = SubwordField('chars', pad=pad, unk=unk, bos=bos, fix_len=args.fix_len)
+            elif args.feat == 'bert':
+                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained(args.bert)
+                FEAT = SubwordField('bert',
+                                    pad=tokenizer.pad_token,
+                                    unk=tokenizer.unk_token,
+                                    bos=tokenizer.bos_token or tokenizer.cls_token,
+                                    fix_len=args.fix_len,
+                                    tokenize=tokenizer.tokenize)
+                FEAT.vocab = tokenizer.get_vocab()
+            else:
+                FEAT = Field('tags', bos=bos)
+
+        TEXT = RawField('texts')
         ARC = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL = Field('rels', bos=bos)
         TAG = Field('pos', bos=bos)
         if args.feat in ('char', 'bert'):
             if args.use_cpos:
-                origin = CoNLL(FORM=(WORD, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
+                origin = CoNLL(FORM=(WORD, TEXT, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
             else:
-                origin = CoNLL(FORM=(WORD, FEAT), POS=TAG, HEAD=ARC, DEPREL=REL)
+                origin = CoNLL(FORM=(WORD, TEXT, FEAT), POS=TAG, HEAD=ARC, DEPREL=REL)
         else:
             if args.use_cpos:
-                origin = CoNLL(FORM=WORD, CPOS=FEAT, HEAD=ARC, DEPREL=REL)
+                origin = CoNLL(FORM=(WORD, TEXT), CPOS=FEAT, HEAD=ARC, DEPREL=REL)
             else:
-                origin = CoNLL(FORM=WORD, POS=FEAT, HEAD=ARC, DEPREL=REL)
+                origin = CoNLL(FORM=(WORD, TEXT), POS=FEAT, HEAD=ARC, DEPREL=REL)
 
         tag_set = EnsembleDependencyParser.getTagSet(args.tag_set_path, bos)
         if tag_set != None:
             TAG.vocab = tag_set
 
-
         train = Dataset(origin, args.train)
-        WORD.build(train, args.min_freq, (Embedding.load(args.embed, args.unk) if args.embed else None))
-        FEAT.build(train)
+
+        if args.encoder != 'bert':
+            WORD.build(train, args.min_freq, (Embedding.load(args.embed, args.unk) if args.embed else None))
+            FEAT.build(train)
+        else:
+            WORD.build(train)
         REL.build(train)
         if args.feat in ('char', 'bert'):
             TAG.build(train)
         args.update({
-            'n_words': len(WORD.vocab),
+            'n_words': len(WORD.vocab) if args.encoder == 'bert' else WORD.vocab.n_init,
             'n_feats': len(FEAT.vocab),
             'n_rels': len(REL.vocab),
             'pad_index': WORD.pad_index,

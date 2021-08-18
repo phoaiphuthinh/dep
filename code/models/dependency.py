@@ -97,6 +97,7 @@ class BiaffineDependencyModel(nn.Module):
                  feat_pad_index=0,
                  pad_index=0,
                  unk_index=1,
+                 encoder='bert',
                  transformer_n_layers=3,
                  transformer_n_head=8,
                  transformer_d_k=64,   
@@ -108,51 +109,101 @@ class BiaffineDependencyModel(nn.Module):
         super().__init__()
 
         self.args = Config().update(locals())
+
+        self.encoder_type = encoder
+
         # the embedding layer
-        self.word_embed = nn.Embedding(num_embeddings=n_words,
-                                       embedding_dim=n_embed)
-        if feat == 'char':
-            self.feat_embed = CharLSTM(n_chars=n_feats,
-                                       n_embed=n_char_embed,
-                                       n_out=n_feat_embed,
-                                       pad_index=feat_pad_index)
-        elif feat == 'bert':
-            self.feat_embed = BertEmbedding(model=bert,
-                                            n_layers=n_bert_layers,
-                                            n_out=n_feat_embed,
-                                            pad_index=feat_pad_index,
-                                            dropout=mix_dropout)
-            self.n_feat_embed = self.feat_embed.n_out
-        elif feat == 'tag':
-            self.feat_embed = nn.Embedding(num_embeddings=n_feats,
-                                           embedding_dim=n_feat_embed)
-        else:
-            raise RuntimeError("The feat type should be in ['char', 'bert', 'tag'].")
-        self.embed_dropout = IndependentDropout(p=embed_dropout)
 
-        self.transformer_encoder = TransformerEncoder(d_word_vec=n_embed + n_feat_embed,
-                                                      n_layers=transformer_n_layers,
-                                                      n_head=transformer_n_head,
-                                                      d_k=transformer_d_k,   
-                                                      d_v=transformer_d_v,
-                                                      d_model=n_embed + n_feat_embed,
-                                                      d_inner=transformer_d_inner,
-                                                      scale_emb=False,
-                                                      dropout=0.1)
+        if encoder == 'lstm':
 
-        
+            self.word_embed = nn.Embedding(num_embeddings=n_words,
+                                        embedding_dim=n_embed)
+            if feat == 'char':
+                self.feat_embed = CharLSTM(n_chars=n_feats,
+                                        n_embed=n_char_embed,
+                                        n_out=n_feat_embed,
+                                        pad_index=feat_pad_index)
+            elif feat == 'bert':
+                self.feat_embed = BertEmbedding(model=bert,
+                                                n_layers=n_bert_layers,
+                                                n_out=n_feat_embed,
+                                                pad_index=feat_pad_index,
+                                                dropout=mix_dropout)
+                self.n_feat_embed = self.feat_embed.n_out
+            elif feat == 'tag':
+                self.feat_embed = nn.Embedding(num_embeddings=n_feats,
+                                            embedding_dim=n_feat_embed)
+            else:
+                raise RuntimeError("The feat type should be in ['char', 'bert', 'tag'].")
+            self.embed_dropout = IndependentDropout(p=embed_dropout)
 
-        # the lstm layer
-        self.lstm = LSTM(input_size=n_embed + n_feat_embed,
+            self.lstm = LSTM(input_size=n_embed + n_feat_embed,
                          hidden_size=n_lstm_hidden,
                          num_layers=n_lstm_layers,
                          bidirectional=True,
                          dropout=lstm_dropout)
-        self.lstm_dropout = SharedDropout(p=lstm_dropout)
+            self.lstm_dropout = SharedDropout(p=lstm_dropout)
+
+            self.encoder_n_out = n_lstm_hidden*2
+
+        elif encoder == 'bert':
+
+            self.encoder = BertEmbedding(model=bert,
+                                         n_layers=n_bert_layers,
+                                         n_out=n_feat_embed,
+                                         pad_index=pad_index,
+                                         dropout=mix_dropout,
+                                         requires_grad=True)
+            self.encoder_dropout = nn.Dropout(p=lstm_dropout)
+
+            self.encoder_n_out = self.encoder.n_out
+
+        elif encoder == 'transformer':
+
+            #cần thêm positional embedding để test
+
+            self.word_embed = nn.Embedding(num_embeddings=n_words,
+                                        embedding_dim=n_embed)
+            if feat == 'char':
+                self.feat_embed = CharLSTM(n_chars=n_feats,
+                                        n_embed=n_char_embed,
+                                        n_out=n_feat_embed,
+                                        pad_index=feat_pad_index)
+            elif feat == 'bert':
+                self.feat_embed = BertEmbedding(model=bert,
+                                                n_layers=n_bert_layers,
+                                                n_out=n_feat_embed,
+                                                pad_index=feat_pad_index,
+                                                dropout=mix_dropout)
+                self.n_feat_embed = self.feat_embed.n_out
+            elif feat == 'tag':
+                self.feat_embed = nn.Embedding(num_embeddings=n_feats,
+                                            embedding_dim=n_feat_embed)
+            else:
+                raise RuntimeError("The feat type should be in ['char', 'bert', 'tag'].")
+            self.embed_dropout = IndependentDropout(p=embed_dropout)
+
+            self.transformer_encoder = TransformerEncoder(d_word_vec=n_embed + n_feat_embed,
+                                                        n_layers=transformer_n_layers,
+                                                        n_head=transformer_n_head,
+                                                        d_k=transformer_d_k,   
+                                                        d_v=transformer_d_v,
+                                                        d_model=n_embed + n_feat_embed,
+                                                        d_inner=transformer_d_inner,
+                                                        scale_emb=False,
+                                                        dropout=0.1)
 
 
-        self.encoder_n_out = n_embed + n_feat_embed
-        #self.encoder_n_out = n_lstm_hidden*2
+            self.encoder_dropout = nn.Dropout(p=lstm_dropout)
+            
+            self.encoder_n_out = n_embed + n_feat_embed
+        
+
+        # the lstm layer
+        
+
+
+        #self.encoder_n_out = n_embed + n_feat_embed
         # the MLP layers
         self.mlp_arc_d = MLP(n_in=self.encoder_n_out, n_out=n_mlp_arc, dropout=mlp_dropout)
         self.mlp_arc_h = MLP(n_in=self.encoder_n_out, n_out=n_mlp_arc, dropout=mlp_dropout)
@@ -172,6 +223,48 @@ class BiaffineDependencyModel(nn.Module):
             #nn.init.zeros_(self.word_embed.weight)
             nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
+
+    def encode(self, words, feats=None):
+        if self.encoder_type == 'bert':
+            x = self.encoder(words)
+            return self.encoder_dropout(x)
+        else:
+            #embedding phase
+
+            batch_size, seq_len = words.shape
+            # get the mask and lengths of given batch
+            mask = words.ne(self.pad_index)
+            ext_words = words
+            # set the indices larger than num_embeddings to unk_index
+            if hasattr(self, 'pretrained'):
+                ext_mask = words.ge(self.word_embed.num_embeddings)
+                ext_words = words.masked_fill(ext_mask, self.unk_index)
+
+            # get outputs from embedding layers
+
+            word_embed = self.word_embed(ext_words)
+            if hasattr(self, 'pretrained'):
+                word_embed += self.pretrained(words)
+            feat_embed = self.feat_embed(feats)
+            word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed)
+            # concatenate the word and feat representations
+            embed = torch.cat((word_embed, feat_embed), -1)
+
+            if self.encoder_type == 'lstm':
+                x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
+                x, _ = self.lstm(x)
+                x, _ = pad_packed_sequence(x, True, total_length=seq_len)
+                x = self.lstm_dropout(x)
+
+                return x
+            else:
+                src_mask = mask.unsqueeze(1)
+                x = self.transformer_encoder(embed, src_mask)
+                x = x[0]
+
+                x = self.encoder_dropout(x)
+
+                return x
 
     def forward(self, words, feats):
         r"""
@@ -193,32 +286,34 @@ class BiaffineDependencyModel(nn.Module):
         batch_size, seq_len = words.shape
         # get the mask and lengths of given batch
         mask = words.ne(self.pad_index)
-        ext_words = words
-        # set the indices larger than num_embeddings to unk_index
-        if hasattr(self, 'pretrained'):
-            ext_mask = words.ge(self.word_embed.num_embeddings)
-            ext_words = words.masked_fill(ext_mask, self.unk_index)
+        # ext_words = words
+        # # set the indices larger than num_embeddings to unk_index
+        # if hasattr(self, 'pretrained'):
+        #     ext_mask = words.ge(self.word_embed.num_embeddings)
+        #     ext_words = words.masked_fill(ext_mask, self.unk_index)
 
-        # get outputs from embedding layers
+        # # get outputs from embedding layers
 
-        word_embed = self.word_embed(ext_words)
-        if hasattr(self, 'pretrained'):
-            word_embed += self.pretrained(words)
-        feat_embed = self.feat_embed(feats)
-        word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed)
-        # concatenate the word and feat representations
-        embed = torch.cat((word_embed, feat_embed), -1)
+        # word_embed = self.word_embed(ext_words)
+        # if hasattr(self, 'pretrained'):
+        #     word_embed += self.pretrained(words)
+        # feat_embed = self.feat_embed(feats)
+        # word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed)
+        # # concatenate the word and feat representations
+        # embed = torch.cat((word_embed, feat_embed), -1)
 
 
-        #bilstm
+        # #bilstm
         # x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
         # x, _ = self.lstm(x)
         # x, _ = pad_packed_sequence(x, True, total_length=seq_len)
         # x = self.lstm_dropout(x)
-        src_mask = mask.unsqueeze(1)
+        # src_mask = mask.unsqueeze(1)
 
-        x = self.transformer_encoder(embed, src_mask)
-        x = x[0]
+        # x = self.transformer_encoder(embed, src_mask)
+        # x = x[0]
+
+        x = self.encode(words, feats)
 
         # apply MLPs to the BiLSTM output states
         arc_d = self.mlp_arc_d(x)
