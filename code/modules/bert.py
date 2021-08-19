@@ -37,7 +37,7 @@ class BertEmbedding(nn.Module):
         https://github.com/huggingface/transformers
     """
 
-    def __init__(self, model, n_layers, n_out=0, stride=5, pad_index=0, dropout=0, requires_grad=False):
+    def __init__(self, model, n_layers, n_out=0, stride=256, pad_index=0, dropout=0, requires_grad=False):
         super().__init__()
 
         from transformers import AutoConfig, AutoModel

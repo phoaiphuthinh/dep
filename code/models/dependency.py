@@ -9,7 +9,7 @@ from code.utils import Config
 from code.utils.alg import eisner, eisner2o, mst
 from code.utils.transform import CoNLL
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from code.modules import TransformerEncoder
+from code.modules import TransformerEncoder_
 
 
 class BiaffineDependencyModel(nn.Module):
@@ -98,7 +98,7 @@ class BiaffineDependencyModel(nn.Module):
                  pad_index=0,
                  unk_index=1,
                  encoder='bert',
-                 transformer_n_layers=3,
+                 transformer_n_layers=6,
                  transformer_n_head=8,
                  transformer_d_k=64,   
                  transformer_d_v=64,
@@ -109,6 +109,8 @@ class BiaffineDependencyModel(nn.Module):
         super().__init__()
 
         self.args = Config().update(locals())
+
+        print('encoder', encoder)
 
         self.encoder_type = encoder
 
@@ -150,7 +152,6 @@ class BiaffineDependencyModel(nn.Module):
 
             self.encoder = BertEmbedding(model=bert,
                                          n_layers=n_bert_layers,
-                                         n_out=n_feat_embed,
                                          pad_index=pad_index,
                                          dropout=mix_dropout,
                                          requires_grad=True)
@@ -183,7 +184,7 @@ class BiaffineDependencyModel(nn.Module):
                 raise RuntimeError("The feat type should be in ['char', 'bert', 'tag'].")
             self.embed_dropout = IndependentDropout(p=embed_dropout)
 
-            self.transformer_encoder = TransformerEncoder(d_word_vec=n_embed + n_feat_embed,
+            self.transformer_encoder = TransformerEncoder_(d_word_vec=n_embed + n_feat_embed,
                                                         n_layers=transformer_n_layers,
                                                         n_head=transformer_n_head,
                                                         d_k=transformer_d_k,   
@@ -199,11 +200,6 @@ class BiaffineDependencyModel(nn.Module):
             self.encoder_n_out = n_embed + n_feat_embed
         
 
-        # the lstm layer
-        
-
-
-        #self.encoder_n_out = n_embed + n_feat_embed
         # the MLP layers
         self.mlp_arc_d = MLP(n_in=self.encoder_n_out, n_out=n_mlp_arc, dropout=mlp_dropout)
         self.mlp_arc_h = MLP(n_in=self.encoder_n_out, n_out=n_mlp_arc, dropout=mlp_dropout)
@@ -225,6 +221,9 @@ class BiaffineDependencyModel(nn.Module):
         return self
 
     def encode(self, words, feats=None):
+
+        #print('words shape', words.shape)
+
         if self.encoder_type == 'bert':
             x = self.encoder(words)
             return self.encoder_dropout(x)
@@ -258,11 +257,15 @@ class BiaffineDependencyModel(nn.Module):
 
                 return x
             else:
-                src_mask = mask.unsqueeze(1)
-                x = self.transformer_encoder(embed, src_mask)
-                x = x[0]
+                key_padding_mask = ~mask
 
+                #print('mask shape', src_mask.shape)
+
+                x = self.transformer_encoder(embed, key_padding_mask)
                 x = self.encoder_dropout(x)
+
+                # with open('test.txt', 'a') as f:
+                #     print(x, file=f)
 
                 return x
 
@@ -283,9 +286,12 @@ class BiaffineDependencyModel(nn.Module):
                 scores of all possible labels on each arc.
         """
 
-        batch_size, seq_len = words.shape
+        # if self.encoder_type != 'bert':
+        #     batch_size, seq_len = words.shape
+
+        
         # get the mask and lengths of given batch
-        mask = words.ne(self.pad_index)
+        mask = words.ne(self.args.pad_index) if len(words.shape) < 3 else words.ne(self.args.pad_index).any(-1)
         # ext_words = words
         # # set the indices larger than num_embeddings to unk_index
         # if hasattr(self, 'pretrained'):

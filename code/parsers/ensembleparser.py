@@ -12,7 +12,8 @@ from code.utils.logging import init_logger, logger
 from code.utils.metric import Metric
 from code.utils.parallel import DistributedDataParallel as DDP
 from code.utils.parallel import is_master
-
+from torch.optim import Adam
+from torch.optim.lr_scheduler import ExponentialLR
 
 
 class EnsembleParser(object):
@@ -60,6 +61,15 @@ class EnsembleParser(object):
             logger.info(f"\n{'train:':6} {train_add}\n")
 
         logger.info(f"\n{'train:':6} {train}\n{'dev:':6} {dev}\n{'test:':6} {test}\n")
+
+        if args.encoder == 'bert':
+            from transformers import AdamW, get_linear_schedule_with_warmup
+            steps = len(train.loader) * epochs
+            self.optimizer = AdamW(
+                [{'params': c.parameters(), 'lr': args.lr * (1 if n == 'encoder' else args.lr_rate)}
+                 for n, c in self.model.named_children()],
+                args.lr)
+            self.scheduler = get_linear_schedule_with_warmup(self.optimizer, int(steps*args.warmup), steps)
         
 
         if dist.is_initialized():

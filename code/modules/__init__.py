@@ -9,7 +9,7 @@ from .mlp import MLP
 from .scalar_mix import ScalarMix
 from .treecrf import (CRF2oDependency, CRFConstituency, CRFDependency,
                       MatrixTree)
-from .transformer.encoder import TransformerEncoder
+from .transformer.encoder import TransformerEncoder_
 #from .variational_inference import (LBPSemanticDependency,
 #                                    MFVISemanticDependency)
 

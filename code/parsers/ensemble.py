@@ -104,7 +104,8 @@ class EnsembleDependencyParser(EnsembleParser):
                 words_add, arcs_add, rels_add = it_nx
             #print(words_add)
             #print(pos)
-            mask = words.ne(self.WORD.pad_index)
+            word_mask = words.ne(self.args.pad_index)
+            mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             mask_add = words_add.ne(self.POS.pad_index)
 
             # ignore the first token of each sentence
@@ -146,7 +147,8 @@ class EnsembleDependencyParser(EnsembleParser):
             else:
                 words, texts, pos, arcs, rels = it
                 feats = None
-            mask = words.ne(self.WORD.pad_index)
+            word_mask = words.ne(self.args.pad_index)
+            mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             # ignore the first token of each sentence
             mask[:, 0] = 0
             s_arc, s_rel = self.model(words, feats, pos=pos)
@@ -183,7 +185,8 @@ class EnsembleDependencyParser(EnsembleParser):
             else:
                 words, texts, pos, arcs, rels = it
                 feats = None
-            mask = words.ne(self.WORD.pad_index)
+            word_mask = words.ne(self.args.pad_index)
+            mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             # ignore the first token of each sentence
             mask[:, 0] = 0
             s_arc, s_rel = self.model(words, feats, pos=pos)
@@ -239,7 +242,8 @@ class EnsembleDependencyParser(EnsembleParser):
             else:
                 words, texts, pos, arcs, rels = it
                 feats = None
-            mask = words.ne(self.WORD.pad_index)
+            word_mask = words.ne(self.args.pad_index)
+            mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             # ignore the first token of each sentence
             mask[:, 0] = 0
             lens = mask.sum(1).tolist()
@@ -344,16 +348,23 @@ class EnsembleDependencyParser(EnsembleParser):
         ARC = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL = Field('rels', bos=bos)
         TAG = Field('pos', bos=bos)
-        if args.feat in ('char', 'bert'):
-            if args.use_cpos:
-                origin = CoNLL(FORM=(WORD, TEXT, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
+
+        if args.encoder != 'bert':
+            if args.feat in ('char', 'bert'):
+                if args.use_cpos:
+                    origin = CoNLL(FORM=(WORD, TEXT, FEAT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
+                else:
+                    origin = CoNLL(FORM=(WORD, TEXT, FEAT), POS=TAG, HEAD=ARC, DEPREL=REL)
             else:
-                origin = CoNLL(FORM=(WORD, TEXT, FEAT), POS=TAG, HEAD=ARC, DEPREL=REL)
+                if args.use_cpos:
+                    origin = CoNLL(FORM=(WORD, TEXT), CPOS=FEAT, HEAD=ARC, DEPREL=REL)
+                else:
+                    origin = CoNLL(FORM=(WORD, TEXT), POS=FEAT, HEAD=ARC, DEPREL=REL)
         else:
             if args.use_cpos:
-                origin = CoNLL(FORM=(WORD, TEXT), CPOS=FEAT, HEAD=ARC, DEPREL=REL)
+                origin = CoNLL(FORM=(WORD, TEXT), CPOS=TAG, HEAD=ARC, DEPREL=REL)
             else:
-                origin = CoNLL(FORM=(WORD, TEXT), POS=FEAT, HEAD=ARC, DEPREL=REL)
+                origin = CoNLL(FORM=(WORD, TEXT), POS=TAG, HEAD=ARC, DEPREL=REL)
 
         tag_set = EnsembleDependencyParser.getTagSet(args.tag_set_path, bos)
         if tag_set != None:
@@ -371,12 +382,12 @@ class EnsembleDependencyParser(EnsembleParser):
             TAG.build(train)
         args.update({
             'n_words': len(WORD.vocab) if args.encoder == 'bert' else WORD.vocab.n_init,
-            'n_feats': len(FEAT.vocab),
+            'n_feats': len(FEAT.vocab) if args.encoder != 'bert' else 100,
             'n_rels': len(REL.vocab),
             'pad_index': WORD.pad_index,
             'unk_index': WORD.unk_index,
             'bos_index': WORD.bos_index,
-            'feat_pad_index': FEAT.pad_index
+            'feat_pad_index': FEAT.pad_index if args.encoder != 'bert' else 0,
         })
         logger.info(f"{origin}")
 
@@ -420,8 +431,10 @@ class EnsembleDependencyParser(EnsembleParser):
 
 
         logger.info("Building the model")
-        model = cls.MODEL(**args).load_pretrained(WORD.embed).to(args.device)
+        model = cls.MODEL(**args).load_pretrained(WORD.embed).to(args.device) if args.encoder != 'bert' else cls.MODEL(**args).load_pretrained().to(args.device)
         logger.info(f"{model}\n")
+
+        print(model)
 
         optimizer = Adam(model.parameters(), **optimizer_args)
         scheduler = ExponentialLR(optimizer, **scheduler_args)
