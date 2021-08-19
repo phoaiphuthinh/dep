@@ -80,7 +80,7 @@ class EnsembleParser(object):
 
         #for epoch in range(1, args.epochs + 1):
         epoch = 0
-        while True: #endless training
+        while epoch < args.epochs:
             start = datetime.now()
             epoch += 1
             logger.info(f"Epoch {epoch} / {args.epochs}:")
