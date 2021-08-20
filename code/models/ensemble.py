@@ -70,7 +70,8 @@ class EnsembleModel(nn.Module):
                                                 mlp_dropout=mlp_dropout,
                                                 feat_pad_index=feat_pad_index,
                                                 pad_index=pad_index,
-                                                unk_index=unk_index) #More argument
+                                                unk_index=unk_index,
+                                                **kwargs) #More argument
         self.addition = AffineDependencyModel(n_feats_add=n_feats_add,
                                                 n_rels_add=n_rels_add,
                                                 embed_dropout=embed_dropout,
@@ -88,6 +89,7 @@ class EnsembleModel(nn.Module):
         self.unk_index = unk_index
         self.alpha = alpha
         self.n_rels = n_rels
+        self._lambda = self.args._lambda
 
 
     def load_pretrained(self, embed=None):
@@ -104,14 +106,14 @@ class EnsembleModel(nn.Module):
             a_arc, a_rel = self.addition(adds)
         
             self.modifyScore(adds, a_arc, pos, s_arc)
-            self.modifyLabel(adds, a_rel, pos, s_rel)
+            #self.modifyLabel(adds, a_rel, pos, s_rel)
 
             return s_arc, s_rel, a_arc, a_rel
 
         a_arc, a_rel = self.addition(pos)
     
         self.modifyScore(pos, a_arc, pos, s_arc)
-        self.modifyLabel(pos, a_rel, pos, s_rel)
+        #self.modifyLabel(pos, a_rel, pos, s_rel)
 
             
         return s_arc, s_rel
@@ -138,7 +140,7 @@ class EnsembleModel(nn.Module):
                 The training loss.
         """
         if mask_add is not None:
-            return self.origin.loss(s_arc, s_rel, arcs, rels, mask) * self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add)
+            return  self.origin.loss(s_arc, s_rel, arcs, rels, mask) * (1 - self._lambda) + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self._lambda
 
         return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
 

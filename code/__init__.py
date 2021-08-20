@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from .parsers import (BiaffineDependencyParser, EnsembleDependencyParser, EnsembleDependencyParser_CVT, EnsembleDependencyParser_CRF2o)
+from .parsers import (BiaffineDependencyParser, EnsembleDependencyParser, EnsembleDependencyParser_CRF2o)
 
 __all__ = ['BiaffineDependencyParser',
             'EnsembleDependencyParser',
@@ -9,7 +9,7 @@ __all__ = ['BiaffineDependencyParser',
 
 __version__ = '1.0.0'
 
-PARSER = {parser.NAME: parser for parser in [BiaffineDependencyParser, EnsembleDependencyParser, EnsembleDependencyParser_CVT, EnsembleDependencyParser_CRF2o]}
+PARSER = {parser.NAME: parser for parser in [BiaffineDependencyParser, EnsembleDependencyParser, EnsembleDependencyParser_CRF2o]}
 
 PRETRAINED = {
     'biaffine-dep-en': 'https://github.com/yzhangcs/parser/releases/download/v1.0.0/ptb.biaffine.dependency.char.zip',

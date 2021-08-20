@@ -71,9 +71,21 @@ class Transform(object):
     def tgt(self):
         raise AttributeError
 
-    def save(self, path, sentences):
+    def save(self, path, dataset):
         with open(path, 'w') as f:
-            f.write('\n'.join([str(i) for i in sentences]) + '\n')
+            #f.write('\n'.join([str(i) for i in sentences]) + '\n')
+            for i in range(len(dataset.sentences)):
+                f.write('#')
+                tmp0 = []
+                for j in dataset.probs[i].tolist():
+                    tmp1 = ["{:.2f}".format(k) for k in j]
+                    tmp0.append(tmp1)
+
+                tmp = '\n#'.join([str(j) for j in tmp0])
+                f.write(tmp)
+                f.write('\n')
+                f.write(str(dataset.sentences[i]))
+                f.write('\n')
 
 
 class Sentence(object):
