@@ -79,6 +79,51 @@ class EnsembleDependencyParser(EnsembleParser):
 
         return super().train(**Config().update(locals()))
 
+    def _train_2_time(self, loader, source_train=False):
+        self.model.train()
+
+        bar, metric = progress_bar(loader), AttachmentMetric()
+
+        for it in bar:
+            if source_train:
+                texts, words, arcs, rels = it
+                feats = None
+                pos = None
+            else:
+                if self.args.encoder != 'bert':
+                    if self.args.feat in ('char', 'bert'):
+                        words, texts, feats, pos, arcs, rels = it
+                    else:
+                        words, texts, feats, arcs, rels = it
+                        pos = feats
+                else:
+                    words, texts, pos, arcs, rels = it
+                    feats = None
+
+            self.optimizer.zero_grad()
+            word_mask = words.ne(self.args.pad_index)
+            mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
+            mask[:, 0] = 0
+
+            s_arc, s_rel = self.model(words=words, feats=feats, pos=pos source_train=source_train)
+            loss = self.model.loss_2_time(s_arc, s_rel, arcs, rels, mask, self.args.partial)
+
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
+            self.optimizer.step()
+            self.scheduler.step()
+
+            arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask)
+            if self.args.partial:
+                mask &= arcs.ge(0)
+
+            if not self.args.punct:
+                mask.masked_scatter_(mask, ~mask.new_tensor([ispunct(w) for s in texts for w in s]))
+
+            metric(arc_preds, rel_preds, arcs, rels, mask)
+            bar.set_postfix_str(f"lr: {self.scheduler.get_last_lr()[0]:.4e} - loss: {loss:.4f} - {metric}")
+        
+
     def _train(self, loader, loader_add):
         self.model.train()
 
@@ -99,9 +144,9 @@ class EnsembleDependencyParser(EnsembleParser):
             it_nx = next(bar_add, None)
             if (it_nx is None):
                 bar_add = iter(loader_add)
-                words_add, arcs_add, rels_add = next(bar_add)
+                text_add, words_add, arcs_add, rels_add = next(bar_add)
             else:
-                words_add, arcs_add, rels_add = it_nx
+                text_add, words_add, arcs_add, rels_add = it_nx
             #print(words_add)
             #print(pos)
             word_mask = words.ne(self.args.pad_index)
@@ -392,14 +437,15 @@ class EnsembleDependencyParser(EnsembleParser):
         logger.info(f"{origin}")
 
         logger.info("Building the fields")
+        TEXT_ADD = RawField('texts')
         POS = Field('tags', bos=bos)
         ARC_ADD = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL_ADD = Field('rels', bos=bos)
 
         if args.use_cpos:
-            addition = CoNLL(CPOS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
+            addition = CoNLL(FORM=TEXT_ADD, CPOS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
         else:
-            addition = CoNLL(POS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
+            addition = CoNLL(FORM=TEXT_ADD, POS=POS, HEAD=ARC_ADD, DEPREL=REL_ADD)
 
         train_add = Dataset(addition, args.train_add)
 

@@ -113,6 +113,7 @@ class BiaffineDependencyModel(nn.Module):
         print('encoder', encoder)
 
         self.encoder_type = encoder
+        self.feat_type = feat
 
         # the embedding layer
 
@@ -213,6 +214,20 @@ class BiaffineDependencyModel(nn.Module):
         self.pad_index = pad_index
         self.unk_index = unk_index
 
+    def freeze(self):
+        for name, child in self.named_children():
+            if self.feat_type == 'bert' and name == 'feat_embed':
+                continue
+            for param in child.parameters():
+                param.requires_grad = False
+
+    def unfreeze(self):
+        for name, child in self.named_children():
+            if self.feat_type == 'bert' and name == 'feat_embed':
+                continue
+            for param in child.parameters():
+                param.requires_grad = True
+
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
@@ -292,32 +307,6 @@ class BiaffineDependencyModel(nn.Module):
         
         # get the mask and lengths of given batch
         mask = words.ne(self.args.pad_index) if len(words.shape) < 3 else words.ne(self.args.pad_index).any(-1)
-        # ext_words = words
-        # # set the indices larger than num_embeddings to unk_index
-        # if hasattr(self, 'pretrained'):
-        #     ext_mask = words.ge(self.word_embed.num_embeddings)
-        #     ext_words = words.masked_fill(ext_mask, self.unk_index)
-
-        # # get outputs from embedding layers
-
-        # word_embed = self.word_embed(ext_words)
-        # if hasattr(self, 'pretrained'):
-        #     word_embed += self.pretrained(words)
-        # feat_embed = self.feat_embed(feats)
-        # word_embed, feat_embed = self.embed_dropout(word_embed, feat_embed)
-        # # concatenate the word and feat representations
-        # embed = torch.cat((word_embed, feat_embed), -1)
-
-
-        # #bilstm
-        # x = pack_padded_sequence(embed, mask.sum(1).tolist(), True, False)
-        # x, _ = self.lstm(x)
-        # x, _ = pad_packed_sequence(x, True, total_length=seq_len)
-        # x = self.lstm_dropout(x)
-        # src_mask = mask.unsqueeze(1)
-
-        # x = self.transformer_encoder(embed, src_mask)
-        # x = x[0]
 
         x = self.encode(words, feats)
 
@@ -505,6 +494,14 @@ class AffineDependencyModel(nn.Module):
         self.criterion = nn.CrossEntropyLoss()
         self.pad_index = pad_index_add
         self.unk_index = unk_index_add
+
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+
+    def unfreeze(self):
+        for param in self.parameters():
+            param.requires_grad = True
 
     def load_pretrained(self, embed=None):
         if embed is not None:
