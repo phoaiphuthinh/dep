@@ -82,7 +82,7 @@ class EnsembleParser(object):
             start = datetime.now()
             epoch += 1
             logger.info(f"Epoch {epoch} / {args.epochs_add}:")
-            self._train_2_time(train_add.loader)
+            self._train_2_time(train_add.loader, source_train=True)
             loss, dev_metric = self._evaluate(dev_add.loader)
             logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
             loss, test_metric = self._evaluate(test_add.loader)
@@ -112,8 +112,8 @@ class EnsembleParser(object):
             start = datetime.now()
             epoch += 1
             logger.info(f"Epoch {epoch} / {args.epochs}:")
-            self._train(train.loader)
-            loss, dev_metric = self._evaluate(dev.loader)
+            self._train_2_time(train.loader)
+            loss, dev_metric = self._evaluate(dev.loader, source_train=False)
             logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
             loss, test_metric = self._evaluate(test.loader)
             logger.info(f"{'test:':5} loss: {loss:.4f} - {test_metric}")
