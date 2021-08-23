@@ -105,7 +105,7 @@ class EnsembleDependencyParser(EnsembleParser):
             mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             mask[:, 0] = 0
 
-            s_arc, s_rel = self.model(words=words, feats=feats, pos=pos source_train=source_train)
+            s_arc, s_rel = self.model(words=words, feats=feats, pos=pos, source_train=source_train)
             loss = self.model.loss_2_time(s_arc, s_rel, arcs, rels, mask, self.args.partial)
 
             loss.backward()

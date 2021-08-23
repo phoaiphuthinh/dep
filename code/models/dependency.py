@@ -80,6 +80,7 @@ class BiaffineDependencyModel(nn.Module):
                  n_words,
                  n_feats,
                  n_rels,
+                 n_feats_pos = None,
                  feat='char',
                  n_embed=100,
                  n_feat_embed=100,
@@ -158,7 +159,7 @@ class BiaffineDependencyModel(nn.Module):
                                          requires_grad=True)
             self.encoder_dropout = nn.Dropout(p=lstm_dropout)
 
-            self.encoder_n_out = self.encoder.n_out
+            self.encoder_n_out = (self.encoder.n_out + n_feats_pos) if not n_feats_pos is None else self.encoder.n_out
 
         elif encoder == 'transformer':
 
@@ -231,17 +232,19 @@ class BiaffineDependencyModel(nn.Module):
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
-            #nn.init.zeros_(self.word_embed.weight)
-            nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
+            nn.init.zeros_(self.word_embed.weight)
+            #nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
 
-    def encode(self, words, feats=None):
+    def encode(self, words, feats=None, embedded_pos=None):
 
         #print('words shape', words.shape)
 
         if self.encoder_type == 'bert':
             x = self.encoder(words)
-            return self.encoder_dropout(x)
+            x = self.encoder_dropout(x)
+            embed = torch.cat((x, embedded_pos), -1)
+            return embed
         else:
             #embedding phase
 
@@ -284,7 +287,7 @@ class BiaffineDependencyModel(nn.Module):
 
                 return x
 
-    def forward(self, words, feats):
+    def forward(self, words, feats, embedded_pos=None):
         r"""
         Args:
             words (~torch.LongTensor): ``[batch_size, seq_len]``.
@@ -308,7 +311,7 @@ class BiaffineDependencyModel(nn.Module):
         # get the mask and lengths of given batch
         mask = words.ne(self.args.pad_index) if len(words.shape) < 3 else words.ne(self.args.pad_index).any(-1)
 
-        x = self.encode(words, feats)
+        x = self.encode(words, feats, embedded_pos)
 
         # apply MLPs to the BiLSTM output states
         arc_d = self.mlp_arc_d(x)
@@ -496,8 +499,14 @@ class AffineDependencyModel(nn.Module):
         self.unk_index = unk_index_add
 
     def freeze(self):
-        for param in self.parameters():
-            param.requires_grad = False
+        # for param in self.parameters():
+        #     param.requires_grad = False
+        for n, child in self.named_children():
+            if n == 'feat_embed' or n == 'embed_dropout':
+                continue
+            else:
+                for param in child.parameters():
+                    param.requires_grad = False
 
     def unfreeze(self):
         for param in self.parameters():
@@ -506,9 +515,28 @@ class AffineDependencyModel(nn.Module):
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
-            #nn.init.zeros_(self.feat_embed.weight)
-            nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
+            nn.init.zeros_(self.feat_embed.weight)
+            #nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
+
+    def encode(self, words):
+        batch_size, seq_len = words.shape
+        # get the mask and lengths of given batch
+        mask = words.ne(self.pad_index)
+        ext_words = words
+        # set the indices larger than num_embeddings to unk_index
+        if hasattr(self, 'pretrained'):
+            ext_mask = words.ge(self.feat_embed.num_embeddings)
+            ext_words = words.masked_fill(ext_mask, self.unk_index)
+
+        # get outputs from embedding layers
+        feat_embed = self.feat_embed(ext_words)
+        if hasattr(self, 'pretrained'):
+            feat_embed += self.pretrained(words)
+        feat_embed = self.embed_dropout(feat_embed)
+        # concatenate the word and feat representations
+        embed = torch.cat((feat_embed[0], ), -1)
+        return embed
 
     def forward(self, words):
         r"""

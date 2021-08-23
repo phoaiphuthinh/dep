@@ -71,6 +71,7 @@ class EnsembleModel(nn.Module):
                                                 feat_pad_index=feat_pad_index,
                                                 pad_index=pad_index,
                                                 unk_index=unk_index,
+                                                n_feats_pos=n_feats_add,
                                                 **kwargs) #More argument
         self.addition = AffineDependencyModel(n_feats_add=n_feats_add,
                                                 n_rels_add=n_rels_add,
@@ -130,7 +131,8 @@ class EnsembleModel(nn.Module):
 
             return s_arc, s_rel
         else:
-            s_arc, s_rel = self.origin(words, feats)
+            embedded_pos = self.addition.encode(pos)
+            s_arc, s_rel = self.origin(words, feats, embedded_pos)
             a_arc, a_rel = self.addition(pos)
 
             s_arc = s_arc * (1 - self.alpha) + a_arc * self.alpha
