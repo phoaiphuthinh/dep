@@ -82,6 +82,8 @@ class EnsembleDependencyParser(EnsembleParser):
     def _train_2_time(self, loader, source_train=False):
         self.model.train()
 
+        pad_index = self.args.feat_pad_index_add if source_train else self.args.pad_index
+
         bar, metric = progress_bar(loader), AttachmentMetric()
 
         for it in bar:
@@ -101,12 +103,13 @@ class EnsembleDependencyParser(EnsembleParser):
                     feats = None
 
             self.optimizer.zero_grad()
-            word_mask = words.ne(self.args.pad_index)
+            word_mask = words.ne(pad_index)
             mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             mask[:, 0] = 0
 
             s_arc, s_rel = self.model(words=words, feats=feats, pos=pos, source_train=source_train)
-            loss = self.model.loss_2_time(s_arc, s_rel, arcs, rels, mask, self.args.partial)
+
+            loss = self.model.loss_2_time(s_arc=s_arc, s_rel=s_rel, arcs=arcs, rels=rels, mask=mask, partial=self.args.partial)
 
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
@@ -178,26 +181,35 @@ class EnsembleDependencyParser(EnsembleParser):
             bar.set_postfix_str(f"lr: {self.scheduler.get_last_lr()[0]:.4e} - loss: {loss:.4f} - {metric}")
 
     @torch.no_grad()
-    def _evaluate(self, loader):
+    def _evaluate(self, loader, source_train=False):
         self.model.eval()
 
+        pad_index = self.args.feat_pad_index_add if source_train else self.args.pad_index
+
         total_loss, metric = 0, AttachmentMetric()
+
         for it in loader:
-            if self.args.encoder != 'bert':
-                if self.args.feat in ('char', 'bert'):
-                    words, texts, feats, pos, arcs, rels = it
-                else:
-                    words, texts, feats, arcs, rels = it
-                    pos = feats
-            else:
-                words, texts, pos, arcs, rels = it
+            if source_train:
+                texts, words, arcs, rels = it
                 feats = None
-            word_mask = words.ne(self.args.pad_index)
+                pos = None
+            else:
+                if self.args.encoder != 'bert':
+                    if self.args.feat in ('char', 'bert'):
+                        words, texts, feats, pos, arcs, rels = it
+                    else:
+                        words, texts, feats, arcs, rels = it
+                        pos = feats
+                else:
+                    words, texts, pos, arcs, rels = it
+                    feats = None
+
+            word_mask = words.ne(pad_index)
             mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             # ignore the first token of each sentence
             mask[:, 0] = 0
-            s_arc, s_rel = self.model(words, feats, pos=pos)
-            loss = self.model.loss(s_arc, s_rel, arcs, rels, mask, self.args.partial)
+            s_arc, s_rel = self.model(words, feats, pos=pos, source_train=source_train)
+            loss = self.model.loss_2_time(s_arc=s_arc, s_rel=s_rel, arcs=arcs, rels=rels, mask=mask, partial=self.args.partial)
             arc_preds, rel_preds = self.model.decode(s_arc, s_rel, mask, self.args.tree, self.args.proj)
             if self.args.partial:
                 mask &= arcs.ge(0)

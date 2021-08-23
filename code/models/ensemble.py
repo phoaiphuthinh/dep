@@ -71,7 +71,7 @@ class EnsembleModel(nn.Module):
                                                 feat_pad_index=feat_pad_index,
                                                 pad_index=pad_index,
                                                 unk_index=unk_index,
-                                                n_feats_pos=n_feats_add,
+                                                n_feats_pos=n_feat_embed,
                                                 **kwargs) #More argument
         self.addition = AffineDependencyModel(n_feats_add=n_feats_add,
                                                 n_rels_add=n_rels_add,
@@ -165,7 +165,7 @@ class EnsembleModel(nn.Module):
 
         return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
 
-    def loss_2_time(s_arc, s_rel, arcs, rels, mask, partial=False):
+    def loss_2_time(self, s_arc, s_rel, arcs, rels, mask, partial=False):
         if partial:
             mask = mask & arcs.ge(0)
         s_arc, arcs = s_arc[mask], arcs[mask]

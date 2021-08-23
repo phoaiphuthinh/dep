@@ -80,7 +80,6 @@ class BiaffineDependencyModel(nn.Module):
                  n_words,
                  n_feats,
                  n_rels,
-                 n_feats_pos = None,
                  feat='char',
                  n_embed=100,
                  n_feat_embed=100,
@@ -105,7 +104,8 @@ class BiaffineDependencyModel(nn.Module):
                  transformer_d_v=64,
                  transformer_d_inner=2048,
                  transformer_scale_embed=False,
-                 transformer_dropout=0.1,   
+                 transformer_dropout=0.1,
+                 n_feats_pos = None,   
                  **kwargs):
         super().__init__()
 
@@ -117,6 +117,8 @@ class BiaffineDependencyModel(nn.Module):
         self.feat_type = feat
 
         # the embedding layer
+
+        print('n_feats_pos', n_feats_pos)
 
         if encoder == 'lstm':
 
@@ -159,7 +161,10 @@ class BiaffineDependencyModel(nn.Module):
                                          requires_grad=True)
             self.encoder_dropout = nn.Dropout(p=lstm_dropout)
 
-            self.encoder_n_out = (self.encoder.n_out + n_feats_pos) if not n_feats_pos is None else self.encoder.n_out
+            if n_feats_pos is not None:
+                self.encoder_n_out = (self.encoder.n_out + n_feats_pos)
+            else:
+                self.encoder_n_out = self.encoder.n_out
 
         elif encoder == 'transformer':
 
@@ -232,8 +237,8 @@ class BiaffineDependencyModel(nn.Module):
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
-            nn.init.zeros_(self.word_embed.weight)
-            #nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
+            #nn.init.zeros_(self.word_embed.weight)
+            nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
 
     def encode(self, words, feats=None, embedded_pos=None):
@@ -515,8 +520,8 @@ class AffineDependencyModel(nn.Module):
     def load_pretrained(self, embed=None):
         if embed is not None:
             self.pretrained = nn.Embedding.from_pretrained(embed)
-            nn.init.zeros_(self.feat_embed.weight)
-            #nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
+            #nn.init.zeros_(self.feat_embed.weight)
+            nn.init.orthogonal_(self.word_embed.weight) # use orthogonal matrix initialization
         return self
 
     def encode(self, words):
