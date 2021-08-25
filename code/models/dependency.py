@@ -166,6 +166,8 @@ class BiaffineDependencyModel(nn.Module):
             else:
                 self.encoder_n_out = self.encoder.n_out
 
+            #self.encoder_n_out = self.encoder.n_out
+
         elif encoder == 'transformer':
 
             #cần thêm positional embedding để test
@@ -249,6 +251,7 @@ class BiaffineDependencyModel(nn.Module):
             x = self.encoder(words)
             x = self.encoder_dropout(x)
             embed = torch.cat((x, embedded_pos), -1)
+            #embed = x
             return embed
         else:
             #embedding phase

@@ -97,13 +97,14 @@ class EnsembleModel(nn.Module):
         return self
     
     def train_model_(self, source_train=False):
-        self.train()
+        #self.train()
         if source_train:
             self.origin.freeze()
             self.addition.unfreeze()
         else:
             self.origin.unfreeze()
-            self.addition.freeze()
+            self.addition.unfreeze()
+        return
 
     # def forward(self, words, feats, adds=None, pos=None):
 
@@ -134,6 +135,8 @@ class EnsembleModel(nn.Module):
             embedded_pos = self.addition.encode(pos)
             s_arc, s_rel = self.origin(words, feats, embedded_pos)
             a_arc, a_rel = self.addition(pos)
+            # self.modifyScore(pos, a_arc, pos, s_arc)
+            # self.modifyLabel(pos, a_rel, pos, s_rel)
 
             s_arc = s_arc * (1 - self.alpha) + a_arc * self.alpha
             s_rel = s_rel * (1- self.alpha) + a_rel * self.alpha

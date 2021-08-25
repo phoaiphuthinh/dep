@@ -374,7 +374,7 @@ class EnsembleDependencyParser(EnsembleParser):
 
         if args.encoder == 'bert':
             from transformers import AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained(args.bert)
+            tokenizer = AutoTokenizer.from_pretrained(args.bert, use_fast=False)
             WORD = SubwordField('words',
                                 pad=tokenizer.pad_token,
                                 unk=tokenizer.unk_token,
