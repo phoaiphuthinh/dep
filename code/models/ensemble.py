@@ -71,6 +71,7 @@ class EnsembleModel(nn.Module):
                                                 feat_pad_index=feat_pad_index,
                                                 pad_index=pad_index,
                                                 unk_index=unk_index,
+                                                n_feats_pos=n_feat_embed,
                                                 **kwargs) #More argument
         self.addition = AffineDependencyModel(n_feats_add=n_feats_add,
                                                 n_rels_add=n_rels_add,
@@ -95,29 +96,52 @@ class EnsembleModel(nn.Module):
     def load_pretrained(self, embed=None):
         return self
     
+    def train_model_(self, source_train=False):
+        #self.train()
+        if source_train:
+            self.origin.freeze()
+            self.addition.unfreeze()
+        else:
+            self.origin.unfreeze()
+            self.addition.unfreeze()
+        return
 
-    def forward(self, words, feats, adds=None, pos=None):
+    # def forward(self, words, feats, adds=None, pos=None):
 
-        s_arc, s_rel = self.origin(words, feats)
-        if adds is not None:
-            
-            # print('adds ', adds)
-
-            a_arc, a_rel = self.addition(adds)
+    #     s_arc, s_rel = self.origin(words, feats)
+    #     if adds is not None:
         
-            self.modifyScore(adds, a_arc, pos, s_arc)
-            #self.modifyLabel(adds, a_rel, pos, s_rel)
+    #         a_arc, a_rel = self.addition(adds)
+        
+    #         self.modifyScore(adds, a_arc, pos, s_arc)
+    #         #self.modifyLabel(adds, a_rel, pos, s_rel)
 
-            return s_arc, s_rel, a_arc, a_rel
+    #         return s_arc, s_rel, a_arc, a_rel
 
-        a_arc, a_rel = self.addition(pos)
+    #     a_arc, a_rel = self.addition(pos)
     
-        self.modifyScore(pos, a_arc, pos, s_arc)
-        #self.modifyLabel(pos, a_rel, pos, s_rel)
+    #     self.modifyScore(pos, a_arc, pos, s_arc)
+    #     #self.modifyLabel(pos, a_rel, pos, s_rel)
 
-            
-        return s_arc, s_rel
+    #     return s_arc, s_rel
 
+    def forward(self, words, feats=None, pos=None, source_train=False):
+
+        if source_train:
+            s_arc, s_rel = self.addition(words)
+
+            return s_arc, s_rel
+        else:
+            embedded_pos = self.addition.encode(pos)
+            s_arc, s_rel = self.origin(words, feats, embedded_pos)
+            a_arc, a_rel = self.addition(pos)
+            # self.modifyScore(pos, a_arc, pos, s_arc)
+            # self.modifyLabel(pos, a_rel, pos, s_rel)
+
+            s_arc = s_arc * (1 - self.alpha) + a_arc * self.alpha
+            s_rel = s_rel * (1- self.alpha) + a_rel * self.alpha
+
+            return s_arc, s_rel
 
     def loss(self, s_arc, s_rel, arcs, rels, mask, a_arc=None, a_rel=None, arcs_add=None,rels_add=None, mask_add=None, partial=False):
         r"""
@@ -143,6 +167,17 @@ class EnsembleModel(nn.Module):
             return  self.origin.loss(s_arc, s_rel, arcs, rels, mask) * (1 - self._lambda) + self.addition.loss(a_arc, a_rel, arcs_add, rels_add, mask_add) * self._lambda
 
         return self.origin.loss(s_arc, s_rel, arcs, rels, mask)
+
+    def loss_2_time(self, s_arc, s_rel, arcs, rels, mask, partial=False):
+        if partial:
+            mask = mask & arcs.ge(0)
+        s_arc, arcs = s_arc[mask], arcs[mask]
+        s_rel, rels = s_rel[mask], rels[mask]
+        s_rel = s_rel[torch.arange(len(arcs)), arcs]
+        arc_loss = self.criterion(s_arc, arcs)
+        rel_loss = self.criterion(s_rel, rels)
+
+        return arc_loss + rel_loss
 
     def decode(self, s_arc, s_rel, mask, tree=False, proj=False):
         r"""

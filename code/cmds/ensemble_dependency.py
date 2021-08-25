@@ -29,6 +29,8 @@ def main():
     subparser.add_argument('--embed', help='path to pretrained embeddings')
     
     subparser.add_argument('--train_add', default='code/data/add/train.conllu', help='Path to train file')
+    subparser.add_argument('--dev_add', default='code/data/add/train.conllu', help='Path to dev file')
+    subparser.add_argument('--test_add', default='code/data/add/train.conllu', help='Path to train file')
 
     subparser.add_argument('--use_cpos', action='store_true')
     subparser.add_argument('--unk', default='unk', help='unk token in pretrained embeddings')

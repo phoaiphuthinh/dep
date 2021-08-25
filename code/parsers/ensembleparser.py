@@ -29,7 +29,7 @@ class EnsembleParser(object):
         self.optimizer = optimizer
         self.scheduler = scheduler
 
-    def train(self, train, dev, test, buckets=32, batch_size=5000, clip=5.0, epochs=5000, patience=100, **kwargs):
+    def train_2_time(self, train, dev, test, buckets=32, batch_size=5000, clip=5.0, epochs=5000, epochs_add=1000, patience=100, **kwargs):
         args = self.args.update(locals())
         init_logger(logger)
 
@@ -51,63 +51,234 @@ class EnsembleParser(object):
         
         if self.addition:
             train_add = Dataset(self.addition, args.train_add, **args)
-            #dev_add = DatasetPos(self.addition, args.dev_add)
-            #test_add = DatasetPos(self.addition, args.test_add)
+            dev_add = Dataset(self.addition, args.dev_add)
+            test_add = Dataset(self.addition, args.test_add)
 
             buck_sizes = train_add.build(args.batch_size, args.buckets, True, dist.is_initialized())
-            #dev_add.build(args.batch_size, args.buckets)
-            #test_add.build(args.batch_size, args.buckets)
+            dev_add.build(args.batch_size, args.buckets)
+            test_add.build(args.batch_size, args.buckets)
 
             logger.info(f"\n{'train:':6} {train_add}\n")
+            logger.info(f"\n{'train:':6} {dev_add}\n")
+            logger.info(f"\n{'train:':6} {test_add}\n")
 
         logger.info(f"\n{'train:':6} {train}\n{'dev:':6} {dev}\n{'test:':6} {test}\n")
-
-        if args.encoder == 'bert':
-            from transformers import AdamW, get_linear_schedule_with_warmup
-            steps = len(train.loader) * epochs
-            self.optimizer = AdamW(
-                [{'params': c.parameters(), 'lr': args.lr * (1 if n == 'encoder' else args.lr_rate)}
-                 for n, c in self.model.named_children()],
-                args.lr)
-            self.scheduler = get_linear_schedule_with_warmup(self.optimizer, int(steps*args.warmup), steps)
         
-
         if dist.is_initialized():
             self.model = DDP(self.model, device_ids=[args.local_rank], find_unused_parameters=True)
 
-        elapsed = timedelta()
-        best_e, best_metric = 1, Metric()
+        strategy = 2
 
-        #for epoch in range(1, args.epochs + 1):
-        epoch = 0
-        while epoch < args.epochs:
-            start = datetime.now()
-            epoch += 1
-            logger.info(f"Epoch {epoch} / {args.epochs}:")
-            self._train(train.loader, train_add.loader)
-            loss, dev_metric = self._evaluate(dev.loader)
-            logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
-            loss, test_metric = self._evaluate(test.loader)
-            logger.info(f"{'test:':5} loss: {loss:.4f} - {test_metric}")
+        if strategy == 1:
+            #train source
+            elapsed = timedelta()
+            best_e, best_metric = 1, Metric()
+            epoch = 0
+            self.model.train_model_(True)
+            while epoch < args.epochs_add:
+                start = datetime.now()
+                epoch += 1
+                logger.info(f"Epoch {epoch} / {args.epochs_add}:")
+                self._train_2_time(train_add.loader, source_train=True)
+                loss, dev_metric = self._evaluate(dev_add.loader, source_train=True)
+                logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
+                loss, test_metric = self._evaluate(test_add.loader, source_train=True)
+                logger.info(f"{'test:':5} loss: {loss:.4f} - {test_metric}")
 
-            t = datetime.now() - start
-            # save the model if it is the best so far
-            if dev_metric > best_metric:
-                best_e, best_metric = epoch, dev_metric
-                if is_master():
-                    self.save(args.path)
-                logger.info(f"{t}s elapsed (saved)\n")
-            else:
+                t = datetime.now() - start
                 logger.info(f"{t}s elapsed\n")
-            elapsed += t
-            if epoch - best_e >= args.patience:
-                break
+
+
+            from transformers import AdamW, get_linear_schedule_with_warmup
+
+            param_optimizer = list(self.model.named_parameters())
+            no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], "weight_decay": 0.01},
+                {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+            ]
+            num_train_optimization_steps = int(args.epochs * len(train.loader))
+            self.optimizer = AdamW(
+                optimizer_grouped_parameters, lr=args.lr, correct_bias=False
+            ) 
+            self.scheduler = get_linear_schedule_with_warmup(
+                self.optimizer, num_warmup_steps=5, num_training_steps=num_train_optimization_steps
+            )
+
+            elapsed = timedelta()
+            best_e, best_metric = 1, Metric()
+            epoch = 0
+            self.model.train_model_(False)
+            while epoch < args.epochs:
+                start = datetime.now()
+                epoch += 1
+                logger.info(f"Epoch {epoch} / {args.epochs}:")
+                self._train_2_time(train.loader)
+                loss, dev_metric = self._evaluate(dev.loader, source_train=False)
+                logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
+                loss, test_metric = self._evaluate(test.loader)
+                logger.info(f"{'test:':5} loss: {loss:.4f} - {test_metric}")
+
+                t = datetime.now() - start
+                # save the model if it is the best so far
+                if dev_metric > best_metric:
+                    best_e, best_metric = epoch, dev_metric
+                    if is_master():
+                        self.save(args.path)
+                    logger.info(f"{t}s elapsed (saved)\n")
+                else:
+                    logger.info(f"{t}s elapsed\n")
+                elapsed += t
+                if epoch - best_e >= args.patience:
+                    break
+        elif strategy == 2:
+            
+            rate = 5
+
+            from transformers import AdamW, get_linear_schedule_with_warmup
+
+            param_optimizer = list(self.model.named_parameters())
+            no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], "weight_decay": 0.01},
+                {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+            ]
+            num_train_optimization_steps = int(args.epochs * len(train.loader))
+            self.optimizer = AdamW(
+                optimizer_grouped_parameters, lr=args.lr, correct_bias=False
+            ) 
+            self.scheduler = get_linear_schedule_with_warmup(
+                self.optimizer, num_warmup_steps=5, num_training_steps=num_train_optimization_steps
+            )
+
+            elapsed = timedelta()
+            best_e, best_metric = 1, Metric()
+            epoch = 0
+            while epoch < args.epochs:
+                start = datetime.now()
+                epoch += 1
+                logger.info(f"Epoch {epoch} / {args.epochs}:")
+                #train source
+                self.model.train_model_(True)
+                for k in range(1, rate+1):
+                    logger.info(f"sub epoch {k} / {rate}:")
+                    self._train_2_time(train_add.loader, source_train=True)
+                    loss, dev_metric = self._evaluate(dev_add.loader, source_train=True)
+                    logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
+                    loss, test_metric = self._evaluate(test_add.loader, source_train=True)
+                    logger.info(f"{'test:':5} loss: {loss:.4f} - {test_metric}")
+
+                #train target
+                self.model.train_model_(False)
+                self._train_2_time(train.loader)
+                loss, dev_metric = self._evaluate(dev.loader, source_train=False)
+                logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
+                loss, test_metric = self._evaluate(test.loader)
+                logger.info(f"{'test:':5} loss: {loss:.4f} - {test_metric}")
+
+                t = datetime.now() - start
+                # save the model if it is the best so far
+                if dev_metric > best_metric:
+                    best_e, best_metric = epoch, dev_metric
+                    if is_master():
+                        self.save(args.path)
+                    logger.info(f"{t}s elapsed (saved)\n")
+                else:
+                    logger.info(f"{t}s elapsed\n")
+                elapsed += t
+                if epoch - best_e >= args.patience:
+                    break
+
+        #test phase
         loss, metric = self.load(**args)._evaluate(test.loader)
 
         logger.info(f"Epoch {best_e} saved")
         logger.info(f"{'dev:':5} {best_metric}")
         logger.info(f"{'test:':5} {metric}")
         logger.info(f"{elapsed}s elapsed, {elapsed / epoch}s/epoch")
+
+        
+
+    def train(self, train, dev, test, buckets=32, batch_size=5000, clip=5.0, epochs=5000, epochs_add=100, patience=100, **kwargs):
+
+        self.train_2_time(train, dev, test, buckets, batch_size, clip, epochs, epochs_add, patience, **kwargs)
+        # args = self.args.update(locals())
+        # init_logger(logger)
+
+        # self.origin.train()
+        # self.addition.train()
+
+        # if dist.is_initialized():
+        #     args.batch_size = args.batch_size // dist.get_world_size()
+
+        # logger.info("Loading the data")
+        # train = Dataset(self.origin, args.train, **args)
+        # dev = Dataset(self.origin, args.dev)
+        # test = Dataset(self.origin, args.test)
+
+        # train.build(args.batch_size, args.buckets, True, dist.is_initialized())
+        # dev.build(args.batch_size, args.buckets)
+        # test.build(args.batch_size, args.buckets)
+        
+        # if self.addition:
+        #     train_add = Dataset(self.addition, args.train_add, **args)
+        #     #dev_add = DatasetPos(self.addition, args.dev_add)
+        #     #test_add = DatasetPos(self.addition, args.test_add)
+
+        #     buck_sizes = train_add.build(args.batch_size, args.buckets, True, dist.is_initialized())
+        #     #dev_add.build(args.batch_size, args.buckets)
+        #     #test_add.build(args.batch_size, args.buckets)
+
+        #     logger.info(f"\n{'train:':6} {train_add}\n")
+
+        # logger.info(f"\n{'train:':6} {train}\n{'dev:':6} {dev}\n{'test:':6} {test}\n")
+
+        # if args.encoder == 'bert':
+        #     from transformers import AdamW, get_linear_schedule_with_warmup
+        #     steps = len(train.loader) * epochs
+        #     self.optimizer = AdamW(
+        #         [{'params': c.parameters(), 'lr': args.lr * (1 if n == 'encoder' else args.lr_rate)}
+        #          for n, c in self.model.named_children()],
+        #         args.lr)
+        #     self.scheduler = get_linear_schedule_with_warmup(self.optimizer, int(steps*args.warmup), steps)
+        
+
+        # if dist.is_initialized():
+        #     self.model = DDP(self.model, device_ids=[args.local_rank], find_unused_parameters=True)
+
+        # elapsed = timedelta()
+        # best_e, best_metric = 1, Metric()
+
+        # #for epoch in range(1, args.epochs + 1):
+        # epoch = 0
+        # while epoch < args.epochs:
+        #     start = datetime.now()
+        #     epoch += 1
+        #     logger.info(f"Epoch {epoch} / {args.epochs}:")
+        #     self._train(train.loader, train_add.loader)
+        #     loss, dev_metric = self._evaluate(dev.loader)
+        #     logger.info(f"{'dev:':5} loss: {loss:.4f} - {dev_metric}")
+        #     loss, test_metric = self._evaluate(test.loader)
+        #     logger.info(f"{'test:':5} loss: {loss:.4f} - {test_metric}")
+
+        #     t = datetime.now() - start
+        #     # save the model if it is the best so far
+        #     if dev_metric > best_metric:
+        #         best_e, best_metric = epoch, dev_metric
+        #         if is_master():
+        #             self.save(args.path)
+        #         logger.info(f"{t}s elapsed (saved)\n")
+        #     else:
+        #         logger.info(f"{t}s elapsed\n")
+        #     elapsed += t
+        #     if epoch - best_e >= args.patience:
+        #         break
+        # loss, metric = self.load(**args)._evaluate(test.loader)
+
+        # logger.info(f"Epoch {best_e} saved")
+        # logger.info(f"{'dev:':5} {best_metric}")
+        # logger.info(f"{'test:':5} {metric}")
+        # logger.info(f"{elapsed}s elapsed, {elapsed / epoch}s/epoch")
 
     def evaluate(self, data, buckets=8, batch_size=5000, **kwargs):
         args = self.args.update(locals())
@@ -122,7 +293,7 @@ class EnsembleParser(object):
 
         logger.info("Evaluating the dataset")
         start = datetime.now()
-        loss, metric = self._evaluate_print(dataset.loader)
+        loss, metric = self._evaluate(dataset.loader)
         elapsed = datetime.now() - start
         logger.info(f"loss: {loss:.4f} - {metric}")
         logger.info(f"{elapsed}s elapsed, {len(dataset)/elapsed.total_seconds():.2f} Sents/s")
@@ -157,6 +328,9 @@ class EnsembleParser(object):
         return dataset
 
     def _train(self, loader):
+        raise NotImplementedError
+
+    def _train_2_time(self, loader):
         raise NotImplementedError
 
     @torch.no_grad()

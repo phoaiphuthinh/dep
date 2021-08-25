@@ -13,6 +13,7 @@ exp*/
 test.txt
 test2.txt
 test*.txt
+test*
 tmp.txt
 .DS_Store/
 .DS_Store
