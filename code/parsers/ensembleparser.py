@@ -143,7 +143,7 @@ class EnsembleParser(object):
                 {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], "weight_decay": 0.01},
                 {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
             ]
-            num_train_optimization_steps = int(args.epochs * len(train.loader) + rate * args.epoch * len(train_add.loader))
+            num_train_optimization_steps = int(args.epochs * len(train.loader) + rate * args.epochs * len(train_add.loader))
             self.optimizer = AdamW(
                 optimizer_grouped_parameters, lr=args.lr, correct_bias=False
             ) 
