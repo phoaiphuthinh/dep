@@ -2,8 +2,9 @@
 
 python3.7 -m code.cmds.ensemble_dependency train -b -d 0 \
 -c "code/config.ini"  \
--p "rate_train_pos_originaltreebank/test_seperate_train" \
+-p "rate_train_pos_originaltreebank_punct/test_seperate_train" \
 -f bert \
+--punct \
 --tree \
 --bert "vinai/phobert-base" \
 --train "code/data/org/VnDTv1.1-predicted-POS-tags-train.conll" \

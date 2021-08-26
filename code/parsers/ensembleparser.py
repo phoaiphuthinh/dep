@@ -153,6 +153,7 @@ class EnsembleParser(object):
 
             elapsed = timedelta()
             best_e, best_metric = 1, Metric()
+            best_e_test, best_metric_test = 1, Metric()
             epoch = 0
             while epoch < args.epochs:
                 start = datetime.now()
@@ -185,6 +186,13 @@ class EnsembleParser(object):
                     logger.info(f"{t}s elapsed (saved)\n")
                 else:
                     logger.info(f"{t}s elapsed\n")
+
+                if test_metric > best_metric_test:
+                    best_e_test, best_metric_test = epoch, test_metric
+                    if is_master():
+                        self.save(args.path + "_test")
+                        logger.info("saved test\n")
+
                 elapsed += t
                 if epoch - best_e >= args.patience:
                     break
