@@ -143,12 +143,12 @@ class EnsembleParser(object):
                 {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], "weight_decay": 0.01},
                 {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
             ]
-            num_train_optimization_steps = int(args.epochs * len(train.loader))
+            num_train_optimization_steps = int(args.epochs * len(train.loader) + rate * args.epoch * len(train_add.loader))
             self.optimizer = AdamW(
                 optimizer_grouped_parameters, lr=args.lr, correct_bias=False
             ) 
             self.scheduler = get_linear_schedule_with_warmup(
-                self.optimizer, num_warmup_steps=5, num_training_steps=num_train_optimization_steps
+                self.optimizer, num_warmup_steps=5 * (rate+1), num_training_steps=num_train_optimization_steps
             )
 
             elapsed = timedelta()

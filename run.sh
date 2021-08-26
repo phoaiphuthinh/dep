@@ -2,19 +2,18 @@
 
 python3.7 -m code.cmds.ensemble_dependency train -b -d 0 \
 -c "code/config.ini"  \
--p "rate_train_nomodify_withembedding/test_seperate_train" \
+-p "rate_train_pos_originaltreebank/test_seperate_train" \
 -f bert \
 --tree \
 --bert "vinai/phobert-base" \
---train "code/data/ud/vi_train_predicted.conllu" \
---dev "code/data/ud/vi_dev_predicted.conllu" \
---test "code/data/ud/vi_test_predicted.conllu" \
---train_add "code/data/ud/en_gum-train.conllu" \
---dev_add "code/data/ud/en_gum-dev.conllu" \
---test_add "code/data/ud/en_gum-test.conllu" \
+--train "code/data/org/VnDTv1.1-predicted-POS-tags-train.conll" \
+--dev "code/data/org/VnDTv1.1-predicted-POS-tags-dev.conll" \
+--test "code/data/org/VnDTv1.1-predicted-POS-tags-test.conll" \
+--train_add "code/data/org/envi-train.conllu" \
+--dev_add "code/data/org/envi-dev.conllu" \
+--test_add "code/data/org/envi-test.conllu" \
 --batch-size 1000 \
---use_cpos \
---epochs 5000 \
+--epochs 50 \
 --epochs_add 300 \
 --encoder "bert"
 
