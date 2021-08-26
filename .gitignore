@@ -17,6 +17,7 @@ test*
 tmp.txt
 .DS_Store/
 .DS_Store
+rate*
 
 .ipynb_checkpoints
 
