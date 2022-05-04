@@ -203,7 +203,6 @@ class EnsembleDependencyParser(EnsembleParser):
                 else:
                     words, texts, pos, arcs, rels = it
                     feats = None
-
             word_mask = words.ne(pad_index)
             mask = word_mask if len(words.shape) < 3 else word_mask.any(-1)
             # ignore the first token of each sentence
@@ -404,7 +403,7 @@ class EnsembleDependencyParser(EnsembleParser):
         TEXT = RawField('texts')
         ARC = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL = Field('rels', bos=bos)
-        TAG = Field('pos', bos=bos)
+        TAG = Field('pos', bos=bos, pad=pad)
 
         if args.encoder != 'bert':
             if args.feat in ('char', 'bert'):
@@ -450,7 +449,7 @@ class EnsembleDependencyParser(EnsembleParser):
 
         logger.info("Building the fields")
         TEXT_ADD = RawField('texts')
-        POS = Field('tags', bos=bos)
+        POS = Field('tags', bos=bos, pad=pad)
         ARC_ADD = Field('arcs', bos=bos, use_vocab=False, fn=CoNLL.get_arcs)
         REL_ADD = Field('rels', bos=bos)
 
@@ -477,7 +476,9 @@ class EnsembleDependencyParser(EnsembleParser):
 
         POS.build(train_add)
         REL_ADD.build(train_add)
-        
+        TAG.vocab = POS.vocab
+        print(TAG.vocab.stoi)
+        print(POS.vocab.stoi)
         
         args.update({
             'n_feats_add': len(POS.vocab),
